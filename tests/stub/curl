@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# Stand-in for curl. Logs each call to $STUB_LOG, and the headers sent on standard input to $STUB_LOG.stdin.
-# Answers a registration with
-# tests/fixtures/register.json, transformed by the jq filter $STUB_FILTER ($key is the sent public key).
+# Stand-in for curl. Logs each call to $STUB_LOG, the headers sent on standard input to $STUB_LOG.stdin,
+# and request bodies to $STUB_LOG.body. Answers a registration with tests/fixtures/register.json, with the
+# sent key and metadata copied in like the real API, then transformed by the jq filter $STUB_FILTER.
 set -euo pipefail
 method=GET
 url=
+data=
 while [ $# -gt 0 ]; do
   case $1 in
     -X)
       method=$2
       shift
       ;;
-    -o | -w | -H | --max-time | --data-binary) shift ;;
+    --data-binary)
+      data=$2
+      shift
+      ;;
+    -o | -w | -H | --max-time) shift ;;
     -*) ;;
     *) url=$1 ;;
   esac
@@ -19,11 +24,22 @@ while [ $# -gt 0 ]; do
 done
 input=$(cat)
 echo "$method $url" >> "$STUB_LOG"
-if [ "$method" = POST ]; then
-  key=$(jq -r .key <<< "$input")
-  jq --arg key "$key" "(.result.key = \$key) | ${STUB_FILTER:-.}" "$(dirname "$0")/../fixtures/register.json"
-  printf '\n%s' "${STUB_STATUS:-200}"
-elif [ "$method" = DELETE ]; then
-  echo "$input" >> "$STUB_LOG.stdin"
-  printf %s "${STUB_DELETE_STATUS:-204}"
-fi
+case $method in
+  POST)
+    echo "$input" >> "$STUB_LOG.body"
+    jq --argjson body "$input" '(.result.key = $body.key)
+      | .result += ($body | {name, model, os_version, serial_number} | with_entries(select(.value != null)))
+      | '"${STUB_FILTER:-.}" "$(dirname "$0")/../fixtures/register.json"
+    printf '\n%s' "${STUB_STATUS:-200}"
+    ;;
+  PATCH)
+    echo "$input" >> "$STUB_LOG.stdin"
+    echo "$data" >> "$STUB_LOG.body"
+    jq -nc "{result: {}, success: true, errors: [], messages: []} | ${STUB_FILTER:-.}"
+    printf '\n%s' "${STUB_PATCH_STATUS:-200}"
+    ;;
+  DELETE)
+    echo "$input" >> "$STUB_LOG.stdin"
+    printf %s "${STUB_DELETE_STATUS:-204}"
+    ;;
+esac

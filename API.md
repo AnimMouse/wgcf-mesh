@@ -46,6 +46,8 @@ Content-Type: application/json
 ```
 
 - `key` is required (`3006 missing key field`).
+- `type` must be `"linux"`. Every other value, including `windows`, `mac`, `android`, `ios` and `chromeos`, is rejected with `2082 invalid device operating system for warp connector device registration`.
+- Optional metadata shown in the dashboard: `name`, `model`, `os_version` and `serial_number`. Each is at most 100 **bytes** (`2004 bad device request: failed to parse field 'name': value exceeds max length 100`). An empty `name` is stored as no name. The server keeps only the version number from `os_version` if it finds one (`"RouterOS 7.20.1 (stable)"` becomes `"7.20.1"`), and otherwise keeps the text.
 - **Don't send `tunnel_key_data`.** `{"key_type": "curve25519", "tunnel_type": "wireguard"}` is rejected with `2004 bad device request`.
 - The WARP client also sends `model`, `os_version`, `gateway_device_id`, `serial_number`, `identifiers` and `mtls_csr`. None are required.
 
@@ -81,6 +83,19 @@ Authorization: Bearer <result.token>
 
 Returns `200` with the same `result` as the registration response.
 
+## Update a registration
+
+```
+PATCH /v1/accounts/{a}/reg/{id}
+Authorization: Bearer <result.token>
+Content-Type: application/json
+```
+```json
+{"name": "new name", "model": "new model"}
+```
+
+Returns `200` with `"success": true`. Changes to `name` and `model` are verified by reading the registration back. `os_version` and `serial_number` are accepted, but the GET response doesn't include them, so check those in the dashboard.
+
 ## Delete a registration
 
 ```
@@ -95,8 +110,10 @@ Returns `204` with an empty body. After that, the token is rejected with `401` (
 `wgcf-mesh.sh` saves what it needs to delete the registration later in `wgcf-mesh-<result.id>.json`, mode 600, next to the WireGuard config:
 
 ```json
-{"version": 1, "account": "<a>", "id": "<result.id>", "api_token": "<result.token>"}
+{"version": 1, "account": "<a>", "id": "<result.id>", "api_token": "<result.token>", "name": "<result.name>"}
 ```
+
+`wgcf-mesh.sh --update <profile>` sends the update request above with the metadata options given, and saves a new `name` in the profile.
 
 `wgcf-mesh.sh --delete <profile>` sends the delete request above and removes the profile when the API answers `204`. For a registration that was already deleted, the API answers `401` (`2016 unauthorized`).
 
@@ -111,6 +128,8 @@ Errors return a non-2xx status and `"success": false`:
 | Code | Status | Message | Cause |
 | --- | --- | --- | --- |
 | 2004 | 400 | `bad device request` | Body rejected, e.g. because `tunnel_key_data` was sent |
+| 2004 | 400 | `bad device request: failed to parse field '<field>': value exceeds max length 100` | A metadata value over 100 bytes |
+| 2082 | 400 | `invalid device operating system for warp connector device registration` | `type` other than `linux` |
 | 2016 | 401 | `unauthorized` | Bad or deleted bearer token |
 | 3004 | 400 | `invalid warp_connector_token` | Token not valid for this account |
 | 3006 | 400 | `missing key field` | No `key` in the body |
@@ -121,6 +140,7 @@ Errors return a non-2xx status and `"success": false`:
 
 ```
 # Registration ID: <result.id>
+# Device name: <result.name>
 # Organization: <result.account.organization>
 [Interface]
 PrivateKey = <our private key>
