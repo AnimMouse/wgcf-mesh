@@ -1,0 +1,36 @@
+{
+  "result": {
+    "id": "t.00000000-0000-4000-8000-000000000001",
+    "key": "KEY",
+    "name": "wgcf-mesh",
+    "account": {
+      "id": "00000000000000000000000000000000",
+      "account_type": "team",
+      "organization": "example"
+    },
+    "config": {
+      "interface": {
+        "addresses": {
+          "v4": "100.96.0.17",
+          "v6": "2606:4700:cf1:1000::11"
+        }
+      },
+      "peers": [
+        {
+          "public_key": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
+          "endpoint": {
+            "v4": "162.159.193.5:0",
+            "v6": "[2606:4700:100::a29f:c105]:0",
+            "host": "engage.cloudflareclient.com:2408",
+            "ports": [2408, 500, 1701, 4500]
+          }
+        }
+      ]
+    },
+    "token": "00000000-0000-4000-8000-000000000002",
+    "is_connector": true
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}
