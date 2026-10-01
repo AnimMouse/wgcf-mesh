@@ -9,7 +9,7 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 
 - **Bash is the canonical implementation.** Use `curl`, `jq`, and `wg genkey` or `openssl genpkey -algorithm X25519`, preferring `wg`. macOS's LibreSSL 3.3.6 lacks X25519 (verified in CI), so macOS users need `brew install wireguard-tools`. No Go or Rust.
 - **`API.md` documents the protocol**: endpoints, methods, headers, request and response fields. Keep it in sync with the script.
-- **Output must match `wgcf-connector.sh`**: the same `[Interface]`/`[Peer]` layout, but the filename is `wgcf-mesh-<id>.conf`, plus a `wgcf-mesh-<id>.json` device profile (`<id>` is the registration's `result.id`). `Address = <v6>/128, <v4>/32`, the same DNS line, `MTU = 1420`, the first endpoint active and the rest as `#Endpoint =` comments.
+- **Output must match `wgcf-connector.sh`**: the same `[Interface]`/`[Peer]` layout, but the filename is `wgcf-mesh-<id>.conf`, plus a `wgcf-mesh-<id>.json` device profile (`<id>` is the registration's `result.id`). `Address = <v6>/128, <v4>/32`, the same DNS line, `MTU = 1420`, plus `PersistentKeepalive = 60` (not in wgcf-connector) so a node behind NAT stays reachable, the first endpoint active and the rest as `#Endpoint =` comments.
 - **Never report success when something failed.** Fail fast. Read each value once with `jq -er`, reject missing, `null` or empty values, and validate them all before writing. Never write a partial file. Use `umask 077` so the file is mode 600. `set -e` doesn't catch a failing `$(...)` inside a heredoc, so don't put command substitutions there.
 - **Browser version only if CORS allows it.** Never proxy requests through a server we run: users' Mesh tokens must not pass through it.
 

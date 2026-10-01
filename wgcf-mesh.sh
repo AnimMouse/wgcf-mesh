@@ -178,6 +178,7 @@ MTU = 1420
 [Peer]
 PublicKey = $peer_key
 AllowedIPs = ::/0, 0.0.0.0/0
+PersistentKeepalive = 60
 Endpoint = $endpoint
 $other_endpoints
 EOL

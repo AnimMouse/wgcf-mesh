@@ -131,8 +131,11 @@ MTU = 1420
 [Peer]
 PublicKey = <peer public key>
 AllowedIPs = ::/0, 0.0.0.0/0
+PersistentKeepalive = 60
 Endpoint = <endpoint v4 address>:<first port>
 #Endpoint = <every other address and port pair>
 ```
+
+`PersistentKeepalive = 60` isn't in wgcf-connector's layout. A Mesh node is expected to receive traffic, and without a keepalive it doesn't handshake until it sends something, while NAT can drop an idle mapping.
 
 The endpoint lines go through each port in order and list the IPv4 address before the IPv6 address for each one.
