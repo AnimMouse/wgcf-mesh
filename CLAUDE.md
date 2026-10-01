@@ -44,7 +44,12 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 
 - **Never commit to `main`.** Branch, push, and open a PR with `gh pr create`. A ruleset on `main` requires a PR and the `CI` check.
 - Run the tests and linters locally before pushing.
-- Merge with `gh pr merge --squash --delete-branch` once CI is green, and only when the user asks.
+- Merge only when the user asks, and only once CI is green. Squash is the only merge method. Write the squash commit yourself instead of keeping GitHub's default list of commit messages:
+  ```
+  gh pr merge <n> --squash --delete-branch --subject "<PR title> (#<n>)" --body "<summary>"
+  ```
+  The subject is the PR title in Conventional Commits form, plus the PR number. The body summarizes the whole change in a few lines, not commit by commit, and ends with the `Co-Authored-By` trailer.
+- The repo's own default squash message (used when merging in the web UI) is the PR title plus every commit's message, which keeps their trailers.
 
 ## Releases and CI
 
