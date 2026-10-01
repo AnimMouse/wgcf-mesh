@@ -3,7 +3,7 @@
 Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by calling Cloudflare's undocumented registration API directly, without Docker or the WARP client. Like [ViRb3/wgcf](https://github.com/ViRb3/wgcf) and [poscat0x04/wgcf-teams](https://github.com/poscat0x04/wgcf-teams).
 
 - `HANDOFF.md` holds the current state, findings, plan and open questions. Read it first, and update it as findings come in.
-- `/workspaces/refs/wgcf-connector` is the Docker-based sibling project (uses `warp-cli`). It is the reference for what a correct config looks like and for CI workflows. Don't edit it from here.
+- `/workspaces/refs/wgcf-connector` is the Docker-based predecessor (uses `warp-cli`). It is the reference for what a correct config looks like and for CI workflows. Don't edit it from here. Its features are frozen, since wgcf-mesh is its successor: don't propose new features for it.
 
 ## Implementation rules
 
@@ -63,9 +63,8 @@ Planned features, in priority order. Leads come from `strings` on `warp-svc` and
 
 Main features:
 
-1. **Service token auth.** Register with a Cloudflare Access service token instead of a Mesh token. Leads: the client's `RegistrationAuthMethod` has an `AccessServiceToken { id, key }` variant, and the binary has `cf-access-client-id`/`cf-access-client-secret` header names.
-2. ~~**Device profile for later deletion.**~~ Done: every registration also writes `wgcf-mesh-<id>.json` (mode 600) with the account tag, `result.id` and `result.token`, and `--delete <profile>` deletes the device. The profile stays out of the WireGuard config. The smoke test registers and then deletes through the profile.
-3. ~~**Custom device name and metadata.**~~ Done: `--name`, `--model`, `--os-version` and `--serial-number` at registration, and `--update <profile>` to change them with `PATCH /v1/accounts/{a}/reg/{id}`. `type` must stay `linux` (error 2082). Each value is at most 100 bytes. Still to confirm in the dashboard: which fields it shows, and whether `PATCH` changes `os_version` and `serial_number`, which the GET response doesn't include.
+1. ~~**Device profile for later deletion.**~~ Done: every registration also writes `wgcf-mesh-<id>.json` (mode 600) with the account tag, `result.id` and `result.token`, and `--delete <profile>` deletes the device. The profile stays out of the WireGuard config. The smoke test registers and then deletes through the profile.
+2. ~~**Custom device name and metadata.**~~ Done: `--name`, `--model`, `--os-version` and `--serial-number` at registration, and `--update <profile>` to change them with `PATCH /v1/accounts/{a}/reg/{id}`. `type` must stay `linux` (error 2082). Each value is at most 100 bytes. Still to confirm in the dashboard: which fields it shows, and whether `PATCH` changes `os_version` and `serial_number`, which the GET response doesn't include.
 
 To verify:
 
@@ -78,4 +77,8 @@ Nice to have:
 
 1. **Device posture heartbeat**, so the device shows as alive in the dashboard's Devices tab. The tunnel works without it, so it must stay optional, for example a command to run periodically on the server. Leads: `/v0/accounts/{a}/reg/{id}/posture` and `/v0/accounts/{a}/reg/{id}/devicestate`, and the registration response's `last_seen`.
 2. **Consumer WARP profile**, like [ViRb3/wgcf](https://github.com/ViRb3/wgcf). Leads: the consumer API host `api.cloudflareclient.com` also answers our paths, and wgcf documents the consumer registration.
-3. **Standalone Zero Trust devices** that aren't Mesh nodes, like [poscat0x04/wgcf-teams](https://github.com/poscat0x04/wgcf-teams). They register with a team login JWT instead of a Mesh token. Leads: wgcf-teams, and the `Cf-Access-Jwt-Assertion` header in the binary.
+3. **Standalone Zero Trust devices** that aren't Mesh nodes ("headless client devices" in the Mesh docs), authenticated with either:
+   - a **service token** (`organization`, `auth_client_id` and `auth_client_secret`, as in the official client's `mdm.xml`). One token can enroll many devices, can expire and can be rotated with a grace period, and device profiles can match it with `identity.service_token_uuid`. Requested in [wgcf-connector#12](https://github.com/AnimMouse/wgcf-connector/issues/12), whose goal (a separate WireGuard profile) is already possible with a Mesh token and a device profile matching Mesh nodes.
+   - a **team login JWT**, like [poscat0x04/wgcf-teams](https://github.com/poscat0x04/wgcf-teams).
+
+   Such devices get a Mesh IP and can reach nodes and the subnets behind them, but they **can't advertise CIDR routes**, so they don't replace Mesh nodes. Background: during the WARP Connector beta ([archived docs, January 2024](https://web.archive.org/web/20240128042134/https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/private-net/warp-connector/)), connectors needed a service token **and** a `warp_connector_token` in `mdm.xml`; today the Mesh token alone registers a node, so service tokens are no longer needed for nodes. Leads (unverified): the binary's `AccessServiceToken { id, key }` sign-in method, the `cf-access-client-id`/`cf-access-client-secret` headers, the `/v0/reg` path and the `Cf-Access-Jwt-Assertion` header. Probably the service token is traded for an Access JWT from `<team>.cloudflareaccess.com` before registering. Confirm by running `warp-svc` with an `mdm.xml` and a throwaway service token, and reading its logs.
