@@ -42,6 +42,7 @@ jobs:
             wg: true
           - name: macOS, LibreSSL
             runner: macos-latest
+            libressl: true
     name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     steps:
@@ -53,6 +54,14 @@ jobs:
       - name: Install wireguard-tools
         if: matrix.wg
         run: sudo apt-get -qq update && sudo apt-get -qq install --no-install-recommends wireguard-tools
+
+      # The runner has Homebrew OpenSSL first on PATH, but users get Apple's LibreSSL.
+      - name: Use the system LibreSSL
+        if: matrix.libressl
+        run: |
+          mkdir "$RUNNER_TEMP/bin"
+          ln -s /usr/bin/openssl "$RUNNER_TEMP/bin/openssl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Show tool versions
         run: |

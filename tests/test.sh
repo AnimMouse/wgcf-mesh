@@ -75,7 +75,9 @@ STUB_DELETE_STATUS=401 run "--delete-after, delete fails" 1 --delete-after "$tok
 grep -q "could not delete registration" "$work/stderr" || fail "failed deletion not reported"
 [ "$(grep -c '^DELETE' "$STUB_LOG")" -eq 1 ] || fail "expected exactly one DELETE, got $(grep -c '^DELETE' "$STUB_LOG")"
 
-STDIN=<(printf '%s\n' "$token") run "token on stdin" 0 -
+# A file, not <(...): Bash 3.2 closes a process substitution before the function reads it.
+printf '%s\n' "$token" > "$work/token"
+STDIN=$work/token run "token on stdin" 0 -
 [ -f "$work/out/$conf" ] || fail "$conf not written"
 
 STUB_STATUS=400 STUB_FILTER='{result: null, success: false, errors: [{code: 3004, message: "invalid warp_connector_token"}]}' \
