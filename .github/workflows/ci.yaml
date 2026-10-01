@@ -22,6 +22,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -67,6 +68,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ${{ matrix.runner }}
+    # Jobs take under a minute. Without a limit, a hung apt-get blocks a PR for up to 6 hours.
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -75,10 +78,12 @@ jobs:
 
       - name: Install wireguard-tools with apt
         if: matrix.wg == 'apt'
+        timeout-minutes: 5
         run: sudo apt-get -qq update && sudo apt-get -qq install --no-install-recommends wireguard-tools
 
       - name: Install wireguard-tools with Homebrew
         if: matrix.wg == 'brew'
+        timeout-minutes: 5
         run: brew install --quiet wireguard-tools
 
       - name: Show tool versions
@@ -97,6 +102,7 @@ jobs:
     if: ${{ always() }}
     permissions: {}
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     steps:
       - name: Check every job passed
         run: |
