@@ -68,7 +68,7 @@ Other fields in the response (not used yet):
 
 - `result.config.peers[0].endpoint.host` (`engage.cloudflareclient.com:2408`)
 - `result.connector.additional_interfaces.ipv6[]`
-- `result.policy`. Its `tunnel_protocol` comes back empty when `tunnel_key_data` is left out.
+- `result.policy`, the device profile. Its `tunnel_protocol` is empty under a WireGuard profile and `"masque"` under a MASQUE one. Either way the registration returns a working WireGuard config (verified 2026-10-01), so `wgcf-mesh.sh` ignores it.
 - `result.peer`, `result.user`, `result.override_codes` (secrets), `result.dex_tests`, and timestamps.
 
 ## Get a registration
