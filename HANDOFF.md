@@ -148,7 +148,7 @@ result.config.peers[0].endpoint.{v4,v6}   "162.159.193.5:0" and "[2606:4700:100:
 result.config.peers[0].endpoint.host      "engage.cloudflareclient.com:2408"
 result.config.peers[0].endpoint.ports[]   [2408, 500, 1701, 4500]
 result.connector.additional_interfaces.ipv6[]   one 21-char IPv6 string (probably a CIDR); cf. additional_interface_ips
-result.policy.tunnel_protocol             "" (empty, not "wireguard", when tunnel_key_data is omitted)
+result.policy.tunnel_protocol             the device profile's protocol: "" under a WireGuard profile, "masque" under a MASQUE one
 ```
 The response shape differs from `warp-svc`'s `conf.json`, which is the client's own reshaped copy. Endpoints come back as `ip:0` plus a `ports` list, so build `ip:port` from `ports`. wgcf-connector's `conf.json` had one endpoint entry per port.
 
@@ -179,7 +179,7 @@ Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh
 - ~~How is a registration deleted?~~ `DELETE /v1/accounts/{a}/reg/{id}` with `Authorization: Bearer <result.token>` returns `204`.
 - Is `additional_interface_ips` (`result.connector.additional_interfaces.ipv6[]`) needed in `Address`? The tunnel worked without it.
 - ~~Filename?~~ Decided 2026-10-01: `wgcf-mesh-<id>.conf`, where `<id>` is `result.id` as returned (`t.<uuid>`).
-- Which endpoint and port to use, and does `policy.tunnel_protocol` still need checking? It's empty when `tunnel_key_data` is omitted, so wgcf-connector's `wireguard` check doesn't carry over. Does a MASQUE-only device profile still hand out a working WireGuard config this way?
+- ~~Does a MASQUE-only device profile still get a working WireGuard config?~~ Yes, verified 2026-10-01. Under a MASQUE profile the registration still returns the WireGuard peer key, and the tunnel works over IPv4 and IPv6 (`warp=on`, `gateway=on`). `policy.tunnel_protocol` is `"masque"` there and empty under a WireGuard profile, so the script ignores it and **no WireGuard device profile is needed**. Which endpoint and port to use is still open.
 - Is `tos` required? Is `name` shown in the dashboard?
 - What `CF-Client-Version` or user agent does the API require, and does it reject old values over time? Not required as of 2026-10-01, even for a real registration. If so, CI needs to track WARP releases like wgcf-connector's `auto-update.yaml` does.
 
