@@ -56,3 +56,19 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 - Use semver tags, and always release with `gh release create` rather than a bare tag push. Workflows compute the next version from the latest GitHub Release.
 - `ci.yaml` runs on every PR and push to `main`: a Lint job (ShellCheck, shfmt, actionlint, zizmor), the offline tests on Ubuntu with OpenSSL, Ubuntu with `wg`, and macOS with Homebrew's `wg`, and a final `CI` job that fails unless all the others passed. Only `CI` is a required check. `ci.yaml` has no path filters, because a required check from a skipped workflow never reports. `smoke-test.yaml` runs daily against the real API with the `MESH_TOKEN` secret. Copy patterns from wgcf-connector's `.github/workflows/`. Pin GitHub's `actions/*` to major versions and hash-pin third-party actions (`.github/zizmor.yml` enforces this). `dependabot.yaml` updates them weekly after a 7-day cooldown. Give every workflow `permissions: {}` and grant each job only what it needs.
 - Check Cloudflare's terms before publishing anything.
+
+## Roadmap
+
+Planned features, in priority order. Leads come from `strings` on `warp-svc` and its logs (see `HANDOFF.md`) and are unverified unless stated. Document each new call in `API.md` as it is verified.
+
+Main features:
+
+1. **Service token auth.** Register with a Cloudflare Access service token instead of a Mesh token. Leads: the client's `RegistrationAuthMethod` has an `AccessServiceToken { id, key }` variant, and the binary has `cf-access-client-id`/`cf-access-client-secret` header names.
+2. **Device profile for later deletion.** Optionally save a profile with `result.id`, `result.token` (the API token) and the account tag, and add a command that deletes the device from it without the Cloudflare dashboard. This would also replace `--delete-after`'s in-run deletion for CI. The profile holds a credential, so write it with mode 600 and keep it out of the WireGuard config unless decided otherwise. Delete is already verified: `DELETE /v1/accounts/{a}/reg/{id}` with `Authorization: Bearer <result.token>` returns 204.
+3. **Custom device name and metadata** shown in the dashboard: `name`, plus `model`, `os_version`, `serial_number` and `type`. These are the registration body fields `warp-svc` sends. Check which ones the dashboard shows, and whether they can be changed after registration, probably with `PATCH /v1/accounts/{a}/reg/{id}`.
+
+Nice to have:
+
+1. **Device posture heartbeat**, so the device shows as alive in the dashboard's Devices tab. The tunnel works without it, so it must stay optional, for example a command to run periodically on the server. Leads: `/v0/accounts/{a}/reg/{id}/posture` and `/v0/accounts/{a}/reg/{id}/devicestate`, and the registration response's `last_seen`.
+2. **Consumer WARP profile**, like [ViRb3/wgcf](https://github.com/ViRb3/wgcf). Leads: the consumer API host `api.cloudflareclient.com` also answers our paths, and wgcf documents the consumer registration.
+3. **Standalone Zero Trust devices** that aren't Mesh nodes, like [poscat0x04/wgcf-teams](https://github.com/poscat0x04/wgcf-teams). They register with a team login JWT instead of a Mesh token. Leads: wgcf-teams, and the `Cf-Access-Jwt-Assertion` header in the binary.
