@@ -6,3 +6,5 @@ updates:
       interval: weekly
       day: sunday
       time: '11:07'
+    cooldown:
+      default-days: 7

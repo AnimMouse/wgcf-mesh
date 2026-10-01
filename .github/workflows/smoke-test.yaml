@@ -4,11 +4,15 @@ on:
     - cron: '7 11 * * *'
   workflow_dispatch:
 
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}
 
 jobs:
   smoke-test:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

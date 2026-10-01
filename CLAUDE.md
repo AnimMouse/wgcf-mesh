@@ -7,7 +7,7 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 
 ## Implementation rules
 
-- **Bash is the canonical implementation.** Use `curl`, `jq`, and `wg genkey` or `openssl genpkey -algorithm X25519`, falling back to `wg` because macOS LibreSSL may lack X25519. No Go or Rust.
+- **Bash is the canonical implementation.** Use `curl`, `jq`, and `wg genkey` or `openssl genpkey -algorithm X25519`, preferring `wg`. macOS's LibreSSL 3.3.6 lacks X25519 (verified in CI), so macOS users need `brew install wireguard-tools`. No Go or Rust.
 - **`API.md` documents the protocol**: endpoints, methods, headers, request and response fields. Keep it in sync with the script.
 - **Output must match `wgcf-connector.sh`**: the same `[Interface]`/`[Peer]` layout, but the filename is `wgcf-mesh-<id>.conf` (`<id>` is the registration's `result.id`). `Address = <v6>/128, <v4>/32`, the same DNS line, `MTU = 1420`, the first endpoint active and the rest as `#Endpoint =` comments.
 - **Never report success when something failed.** Fail fast. Read each value once with `jq -er`, reject missing, `null` or empty values, and validate them all before writing. Never write a partial file. Use `umask 077` so the file is mode 600. `set -e` doesn't catch a failing `$(...)` inside a heredoc, so don't put command substitutions there.
@@ -16,7 +16,14 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 ## Commands
 
 - Offline tests: `bash tests/test.sh` (stubs `curl` with `tests/stub/curl` and `tests/fixtures/`).
-- Lint: `docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:stable wgcf-mesh.sh tests/test.sh tests/stub/curl` and `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
+- Lint, the same as CI's Lint job (versions pinned in `.github/workflows/ci.yaml`; shfmt style comes from `.editorconfig`):
+  ```
+  docker run --rm -v "$PWD:/mnt" -w /mnt mvdan/shfmt:v3.14.1 -d .
+  docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 $(docker run --rm -v "$PWD:/mnt" -w /mnt mvdan/shfmt:v3.14.1 -f .)
+  docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12
+  docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:1.30.1 --offline .
+  ```
+  To fix formatting, run shfmt with `-w` instead of `-d`.
 - Real run without leaving a device behind: `./wgcf-mesh.sh --delete-after - < ~/.mesh-token`.
 
 ## Secrets and testing
@@ -33,8 +40,19 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 - Docker-in-Docker works, including `--privileged` and `NET_ADMIN`. There's no QEMU for `docker run`, and `warp-svc` won't run under emulation anyway.
 - `gh` is logged in as AnimMouse.
 
+## Workflow
+
+- **Never commit to `main`.** Branch, push, and open a PR with `gh pr create`. A ruleset on `main` requires a PR and the `CI` check.
+- Run the tests and linters locally before pushing.
+- Merge only when the user asks, and only once CI is green. Squash is the only merge method. Write the squash commit yourself instead of keeping GitHub's default list of commit messages:
+  ```
+  gh pr merge <n> --squash --delete-branch --subject "<PR title> (#<n>)" --body "<summary>"
+  ```
+  The subject is the PR title in Conventional Commits form, plus the PR number. The body summarizes the whole change in a few lines, not commit by commit, and ends with the `Co-Authored-By` trailer.
+- The repo's own default squash message (used when merging in the web UI) is the PR title plus every commit's message, which keeps their trailers.
+
 ## Releases and CI
 
 - Use semver tags, and always release with `gh release create` rather than a bare tag push. Workflows compute the next version from the latest GitHub Release.
-- `test.yaml` runs on pushes and PRs, and `smoke-test.yaml` runs daily against the real API with the `MESH_TOKEN` secret. Copy patterns from wgcf-connector's `.github/workflows/`. Pin actions to major versions, and `dependabot.yaml` updates them weekly.
+- `ci.yaml` runs on every PR and push to `main`: a Lint job (ShellCheck, shfmt, actionlint, zizmor), the offline tests on Ubuntu with OpenSSL, Ubuntu with `wg`, and macOS with Homebrew's `wg`, and a final `CI` job that fails unless all the others passed. Only `CI` is a required check. `ci.yaml` has no path filters, because a required check from a skipped workflow never reports. `smoke-test.yaml` runs daily against the real API with the `MESH_TOKEN` secret. Copy patterns from wgcf-connector's `.github/workflows/`. Pin GitHub's `actions/*` to major versions and hash-pin third-party actions (`.github/zizmor.yml` enforces this). `dependabot.yaml` updates them weekly after a 7-day cooldown. Give every workflow `permissions: {}` and grant each job only what it needs.
 - Check Cloudflare's terms before publishing anything.

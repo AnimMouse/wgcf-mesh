@@ -6,7 +6,10 @@ method=GET
 url=
 while [ $# -gt 0 ]; do
   case $1 in
-    -X) method=$2; shift ;;
+    -X)
+      method=$2
+      shift
+      ;;
     -o | -w | -H | --max-time | --data-binary) shift ;;
     -*) ;;
     *) url=$1 ;;

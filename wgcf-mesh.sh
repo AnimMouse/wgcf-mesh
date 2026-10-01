@@ -62,16 +62,19 @@ fi
 account=$(jq -Rer '@base64d | fromjson | .a | strings | select(test("^[0-9a-f]{32}$"))' <<< "$token" 2> /dev/null) ||
   die "invalid token, copy the whole Cloudflare Mesh token that starts with eyJhIjoi"
 
-# Generate a WireGuard key pair. macOS LibreSSL may lack X25519, so prefer wg.
+# Generate a WireGuard key pair. macOS's LibreSSL lacks X25519, so prefer wg, then try Homebrew's OpenSSL.
 if command -v wg > /dev/null; then
   private_key=$(wg genkey)
   public_key=$(wg pubkey <<< "$private_key")
-elif pem=$(openssl genpkey -algorithm X25519 2> /dev/null); then
-  private_key=$(openssl pkey -outform DER <<< "$pem" | tail -c 32 | base64)
-  public_key=$(openssl pkey -pubout -outform DER <<< "$pem" | tail -c 32 | base64)
-  unset pem
 else
-  die "wg or openssl with X25519 support is required"
+  pem=
+  for openssl in openssl /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
+    pem=$("$openssl" genpkey -algorithm X25519 2> /dev/null) && break
+  done
+  [ -n "$pem" ] || die "wg or OpenSSL with X25519 support is required. Install wireguard-tools, on macOS with: brew install wireguard-tools"
+  private_key=$("$openssl" pkey -outform DER <<< "$pem" | tail -c 32 | base64)
+  public_key=$("$openssl" pkey -pubout -outform DER <<< "$pem" | tail -c 32 | base64)
+  unset pem
 fi
 key_pattern='^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=$'
 [[ $private_key =~ $key_pattern && $public_key =~ $key_pattern ]] || die "could not generate a WireGuard key pair"
