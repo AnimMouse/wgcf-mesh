@@ -158,6 +158,28 @@ The response also has `override_codes` secrets, `physical_device_id`, `user.id`,
 
 **Delete:** `DELETE /v1/accounts/{a}/reg/{id}` with the same Bearer token returns `204`. Afterwards GET returns `401 2016 unauthorized`. Still to check: whether the device also disappears from the dashboard.
 
+## IPv6 CIDR route test (2026-10-02)
+
+Two Mesh nodes in the same account, both on a MASQUE device profile, with CIDR routes and split tunnel entries set in the dashboard:
+
+| Node | CIDR routes | Host addresses |
+| --- | --- | --- |
+| A (`~/.mesh-token`) | `192.168.11.0/24`, `fd04:900d:c0de:1::/64` | `192.168.11.1`, `fd04:900d:c0de:1::1` |
+| B (`~/.mesh-token-2`) | `192.168.12.0/24`, `fd04:900d:c0de:2::/64` | `192.168.12.1`, `fd04:900d:c0de:2::1` |
+
+Setup: each node in its own container, with the host addresses on a `dummy0` interface standing in for the LAN, and socat listening on TCP 8080. Each check runs both ways, sourced from the right address, as ICMP ping and a TCP connect, while tcpdump (`-l`) on the receiving tunnel counts arriving packets. The wgcf-mesh containers use kernel WireGuard (`wg-quick`); the official client containers use `warp-cli connector new` and `connect`. The two clients were never registered on a node at the same time. Every registration was deleted afterwards.
+
+| Check | wgcf-mesh (WireGuard) | Official client (MASQUE) |
+| --- | --- | --- |
+| Cloudflare IPv4 to each other | pass | pass |
+| Cloudflare IPv6 to each other | pass | pass |
+| Host IPv4 (IPv4 CIDR routes) | pass | pass |
+| **Host IPv6 (IPv6 CIDR routes)** | **fail: packets leave the sender's `wg0` and never reach the other node** | pass |
+
+Notes:
+- Interface addresses are handed out per registration (`.1`, `.3`, `.5`, …), not fixed per node, so always read them from the config.
+- **Keepalive:** the wgcf-mesh config has no `PersistentKeepalive`, so a node that only receives traffic doesn't handshake until it sends something, and NAT can drop the mapping. The test set `persistent-keepalive 25`. Consider adding `PersistentKeepalive = 25` to the generated `[Peer]`, since a Mesh node is expected to receive traffic.
+
 ## Plan
 
 Use a **throwaway** Mesh node on a WireGuard device profile, and delete it afterwards.
@@ -178,7 +200,7 @@ Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh
 - ~~What are the token's fields?~~ `a`/`t`/`s` = account tag, tunnel ID, tunnel secret. `a` goes in the URL path and the whole token goes in the body.
 - ~~How is a registration deleted?~~ `DELETE /v1/accounts/{a}/reg/{id}` with `Authorization: Bearer <result.token>` returns `204`.
 - **`connector.additional_interfaces.ipv6`** (the official client's `connector_config.additional_interface_ips`): investigated 2026-10-02, still open whether to add it to `Address`.
-  - It's a node-level address. Two registrations on the same node got interface addresses `2606:4700:cf1:1000::1` and `…::2` but the same extra address, `2606:4700:cf1:2000::1`. That may be how high availability replicas share an address, but this is unverified.
+  - ~~It's a node-level address.~~ Corrected 2026-10-02: it's shared across nodes too. Two different Mesh nodes in the same account both got `2606:4700:cf1:2000::1` from the official client, so it's probably an account-level address, not per node or per device. What it's for is still unknown.
   - The official client (`warp-cli connector new`, then `connect`, under a MASQUE profile) assigns it to `CloudflareWARP` as a **deprecated** address (`preferred_lft 0`). The kernel then never uses it as the source for outgoing connections, but still accepts traffic sent to it. Through MASQUE, traffic sourced from it reaches the internet (`warp=on`).
   - With a wgcf-mesh WireGuard config, adding it to `Address` breaks nothing, but traffic sourced from it gets no reply. That fits Cloudflare's note that IPv6 and high availability features need MASQUE.
   - So don't add it to `Address` as a plain address. wg-quick can't mark it deprecated, so the kernel could pick it as the source and break IPv6. A `PostUp = ip -6 addr add <ip>/128 dev %i preferred_lft 0` line would match the official client on Linux, but other WireGuard apps ignore `PostUp`, and it isn't useful until something can reach the node at that address over WireGuard.

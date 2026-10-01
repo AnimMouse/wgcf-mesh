@@ -18,8 +18,8 @@ This is a single Bash script that registers a Mesh node by calling Cloudflare's 
    - `wgcf-mesh-<registration_id>.conf`, the configuration to use in WireGuard.
    - `wgcf-mesh-<registration_id>.json`, the device profile. Keep it to delete the device later, see [Delete a device](#delete-a-device). It contains a token that can delete this device, so keep it private, but you don't need to copy it to the device that runs WireGuard.
 
-> [!NOTE]
-> According to [Cloudflare's docs](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-mesh/get-started/), hostname routes, IPv6 CIDR routes and high availability don't work when the Mesh node's device profile uses WireGuard. wgcf-mesh always sets up a WireGuard tunnel, and whether these features work with it under a MASQUE device profile hasn't been tested yet.
+> [!WARNING]
+> **IPv6 CIDR routes don't work with wgcf-mesh.** Tested 2026-10-02 between two Mesh nodes on a MASQUE device profile: Cloudflare IPv4 and IPv6 addresses and IPv4 CIDR routes work over wgcf-mesh's WireGuard tunnel, but traffic to IPv6 CIDR routes never arrives. With the official WARP client on MASQUE, IPv6 CIDR routes work. This matches [Cloudflare's docs](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-mesh/get-started/), which also list hostname routes and high availability as not working with WireGuard; those two haven't been tested with wgcf-mesh yet. If you need any of them, use the official client.
 
 > [!TIP]
 > To keep the token out of your shell history and process list, pass `-` and give the token on standard input: `bash wgcf-mesh.sh - < token.txt`
