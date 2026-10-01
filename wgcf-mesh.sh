@@ -54,7 +54,7 @@ profile_field() {
     die "$profile is not a valid wgcf-mesh device profile"
 }
 
-# Delete the registration saved in the device profile $profile, then remove the profile.
+# Delete the registration saved in the device profile $profile. The profile and the config are left in place.
 delete_from_profile() {
   [ -f "$profile" ] || die "$profile not found"
   account=$(profile_field account '^[0-9a-f]{32}$')
@@ -67,8 +67,7 @@ delete_from_profile() {
       *) die "could not delete registration $id${delete_status:+ (HTTP $delete_status)}" ;;
     esac
   fi
-  rm -f "$profile"
-  echo "Deleted registration $id and removed $profile, so wgcf-mesh-$id.conf no longer works"
+  echo "Deleted registration $id. $profile and wgcf-mesh-$id.conf are kept, but no longer work."
 }
 
 delete_after=false

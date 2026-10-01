@@ -42,12 +42,12 @@ Each run registers a new device on the Mesh node. To delete one you no longer us
 ```
 bash wgcf-mesh.sh --delete wgcf-mesh-<registration_id>.json
 ```
-This deletes the device from Cloudflare and removes the profile, and its configuration stops working. Devices without a profile can be removed in the Cloudflare dashboard.
+This deletes the device from Cloudflare, and its configuration stops working. The profile and configuration files are kept; delete them yourself when you no longer need them. Devices without a profile can be removed in the Cloudflare dashboard.
 
 ### Options
 | Option | Use |
 | --- | --- |
-| `--delete <profile>` | Delete the device saved in a `wgcf-mesh-<registration_id>.json` device profile. |
+| `--delete <profile>` | Delete the device saved in a `wgcf-mesh-<registration_id>.json` device profile. The files are kept. |
 | `--delete-after` | Delete the registration right after writing the configuration, so the configuration no longer works, and write no device profile. For testing. |
 
 ## How it works
