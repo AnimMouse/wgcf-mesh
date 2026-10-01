@@ -1,0 +1,109 @@
+name: CI
+# No path filters: the CI check is required on pull requests, and a skipped workflow never reports it.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SHFMT: mvdan/shfmt:v3.14.1
+
+jobs:
+  lint:
+    name: Lint
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Every linter runs even if an earlier one fails, so one push shows every problem.
+      # shfmt -f finds every shell script by extension or shebang, so new scripts are linted too.
+      - name: ShellCheck
+        if: ${{ !cancelled() }}
+        run: |
+          mapfile -t files < <(docker run --rm -v "$PWD:/mnt" -w /mnt "$SHFMT" -f .)
+          printf '%s\n' "${files[@]}"
+          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 "${files[@]}"
+
+      - name: shfmt
+        if: ${{ !cancelled() }}
+        run: docker run --rm -v "$PWD:/mnt" -w /mnt "$SHFMT" -d .
+
+      - name: actionlint
+        if: ${{ !cancelled() }}
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+      - name: zizmor
+        if: ${{ !cancelled() }}
+        run: docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:1.30.1 --offline --format github .
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu, OpenSSL
+            runner: ubuntu-latest
+          - name: Ubuntu, wg
+            runner: ubuntu-latest
+            wg: true
+          - name: macOS, LibreSSL
+            runner: macos-latest
+            libressl: true
+    name: Test (${{ matrix.name }})
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install wireguard-tools
+        if: matrix.wg
+        run: sudo apt-get -qq update && sudo apt-get -qq install --no-install-recommends wireguard-tools
+
+      # The runner has Homebrew OpenSSL first on PATH, but users get Apple's LibreSSL.
+      - name: Use the system LibreSSL
+        if: matrix.libressl
+        run: |
+          mkdir "$RUNNER_TEMP/bin"
+          ln -s /usr/bin/openssl "$RUNNER_TEMP/bin/openssl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Show tool versions
+        run: |
+          bash --version | head -n 1
+          jq --version
+          command -v wg || openssl version
+
+      - name: Run tests
+        run: bash tests/test.sh
+
+  # The one check the main branch ruleset requires, so jobs can be added or renamed without editing the ruleset.
+  ci:
+    name: CI
+    needs: [lint, test]
+    if: ${{ always() }}
+    permissions: {}
+    runs-on: ubuntu-slim
+    steps:
+      - name: Check every job passed
+        run: |
+          echo "$RESULTS"
+          [ "$(jq -r 'map(.result) | unique | join(",")' <<< "$RESULTS")" = success ]
+        env:
+          RESULTS: ${{ toJSON(needs) }}

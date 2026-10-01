@@ -1,0 +1,7 @@
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # GitHub's own actions are pinned to major version tags and updated by Dependabot. Hash-pin anything else.
+        actions/*: ref-pin
+        "*": hash-pin

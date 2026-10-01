@@ -16,8 +16,8 @@ failures=0
 run() {
   name=$1 expected=$2
   shift 2
-  rm -rf "$work/out" && mkdir "$work/out" && : > "$STUB_LOG"
-  (cd "$work/out" && "$root/wgcf-mesh.sh" "$@" > "$work/stdout" 2> "$work/stderr" < "${STDIN:-/dev/null}")
+  rm -rf "$work/out" && mkdir "$work/out" && : >"$STUB_LOG"
+  (cd "$work/out" && "$root/wgcf-mesh.sh" "$@" >"$work/stdout" 2>"$work/stderr" <"${STDIN:-/dev/null}")
   code=$?
   if [ "$code" -ne "$expected" ]; then
     fail "exit code $code, expected $expected"
@@ -54,7 +54,7 @@ if [ -f "$work/out/$conf" ]; then
   private_key=$(sed -n 's/^PrivateKey = //p' "$work/out/$conf")
   [[ $private_key =~ ^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=$ ]] || fail "PrivateKey is not a WireGuard key"
   sed "s|^PrivateKey = .*|PrivateKey = PRIVATE_KEY|" "$work/out/$conf" | diff -u "$root/tests/fixtures/expected.conf" - || fail "config differs"
-  mode=$(stat -c %a "$work/out/$conf" 2> /dev/null || stat -f %Lp "$work/out/$conf")
+  mode=$(stat -c %a "$work/out/$conf" 2>/dev/null || stat -f %Lp "$work/out/$conf")
   [ "$mode" = 600 ] || fail "mode is $mode, expected 600"
   [ "$(ls -A "$work/out")" = "$conf" ] || fail "extra files: $(ls -A "$work/out")"
 else
@@ -76,7 +76,7 @@ grep -q "could not delete registration" "$work/stderr" || fail "failed deletion 
 [ "$(grep -c '^DELETE' "$STUB_LOG")" -eq 1 ] || fail "expected exactly one DELETE, got $(grep -c '^DELETE' "$STUB_LOG")"
 
 # A file, not <(...): Bash 3.2 closes a process substitution before the function reads it.
-printf '%s\n' "$token" > "$work/token"
+printf '%s\n' "$token" >"$work/token"
 STDIN=$work/token run "token on stdin" 0 -
 [ -f "$work/out/$conf" ] || fail "$conf not written"
 
@@ -91,7 +91,7 @@ while IFS='|' read -r name filter; do
   STUB_FILTER=$filter run "$name" 1 "$token"
   expect_no_file
   expect_deleted
-done << 'CASES'
+done <<'CASES'
 missing peer key|del(.result.config.peers[0].public_key)
 null IPv4 address|.result.config.interface.addresses.v4 = null
 invalid IPv6 address|.result.config.interface.addresses.v6 = "nope"

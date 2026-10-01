@@ -170,7 +170,7 @@ Use a **throwaway** Mesh node on a WireGuard device profile, and delete it after
 6. **Check CORS** on each endpoint, which decides whether a browser version is possible.
 7. **Find the delete call** (probably authenticated with `reg.json`'s `api_token`) for CI cleanup.
 
-Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh.sh` and the offline tests (`tests/test.sh`, with `curl` stubbed) are written. A real run produced a working tunnel over IPv4 and IPv6, and the registration was deleted afterwards. README and CI are written: `test.yaml` runs ShellCheck plus the offline tests on Ubuntu with OpenSSL, Ubuntu with `wg`, and macOS with LibreSSL. `smoke-test.yaml` runs `--delete-after` daily with the `MESH_TOKEN` repository secret. Neither has run on GitHub yet. Next: push, add the secret, check the macOS LibreSSL job, then settle the open questions below and cut v1.0.0 with `gh release create`.
+Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh.sh` and the offline tests (`tests/test.sh`, with `curl` stubbed) are written. A real run produced a working tunnel over IPv4 and IPv6, and the registration was deleted afterwards. README and CI are written. `ci.yaml` runs the Lint job (ShellCheck, shfmt, actionlint, zizmor) and the offline tests on Ubuntu with OpenSSL, Ubuntu with `wg`, and macOS with Apple's LibreSSL. Only its final `CI` job is required by the `main` ruleset. `smoke-test.yaml` runs `--delete-after` daily with the `MESH_TOKEN` repository secret. All changes now go through PRs. Next: add the secret, check whether macOS LibreSSL can generate X25519 keys, then settle the open questions below and cut v1.0.0 with `gh release create`.
 
 ## Open questions
 
