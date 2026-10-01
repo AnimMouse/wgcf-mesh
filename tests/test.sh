@@ -19,7 +19,7 @@ failures=0
 run() {
   name=$1 expected=$2
   shift 2
-  rm -rf "$work/out" && mkdir "$work/out" && : > "$STUB_LOG" && : > "$STUB_LOG.stdin"
+  rm -rf "$work/out" && mkdir "$work/out" && : > "$STUB_LOG" && : > "$STUB_LOG.stdin" && : > "$STUB_LOG.body"
   (cd "$work/out" && "$root/wgcf-mesh.sh" "$@" > "$work/stdout" 2> "$work/stderr" < "${STDIN:-/dev/null}")
   code=$?
   if [ "$code" -ne "$expected" ]; then
@@ -64,7 +64,7 @@ else
 fi
 if [ -f "$work/out/$profile" ]; then
   jq -e --arg token "$api_token" '. == {version: 1, account: "0123456789abcdef0123456789abcdef",
-    id: "t.00000000-0000-4000-8000-000000000001", api_token: $token}' "$work/out/$profile" > /dev/null ||
+    id: "t.00000000-0000-4000-8000-000000000001", api_token: $token, name: "wgcf-mesh"}' "$work/out/$profile" > /dev/null ||
     fail "profile differs: $(cat "$work/out/$profile")"
   mode=$(stat -c %a "$work/out/$profile" 2> /dev/null || stat -f %Lp "$work/out/$profile")
   [ "$mode" = 600 ] || fail "profile mode is $mode, expected 600"
@@ -74,11 +74,35 @@ fi
 files=$(cd "$work/out" && printf '%s ' .[!.]* *)
 [ "$files" = ".[!.]* $conf $profile " ] || fail "unexpected files: $files"
 grep -q "^POST .*/v1/accounts/0123456789abcdef0123456789abcdef/warp_connector$" "$STUB_LOG" || fail "wrong registration URL"
+jq -e '.type == "linux" and .name == "wgcf-mesh" and (has("model") or has("os_version") or has("serial_number") | not)' \
+  "$STUB_LOG.body" > /dev/null || fail "unexpected registration body: $(cat "$STUB_LOG.body")"
 expect_not_deleted
+
+run "metadata" 0 --name "Büro router" --model RB5009UG+S+ --os-version "RouterOS 7.20" --serial-number HGF09 "$token"
+jq -e '.name == "Büro router" and .model == "RB5009UG+S+" and .os_version == "RouterOS 7.20" and .serial_number == "HGF09"' \
+  "$STUB_LOG.body" > /dev/null || fail "metadata not sent: $(cat "$STUB_LOG.body")"
+grep -qx "# Device name: Büro router" "$work/out/$conf" || fail "device name not in the config"
+jq -e '.name == "Büro router"' "$work/out/$profile" > /dev/null || fail "device name not in the profile"
+
+# Each of these is rejected before calling the API.
+long_ascii=$(printf 'x%.0s' $(seq 101))
+long_utf8=$(printf 'é%.0s' $(seq 51))
+for args in "--name|" "--name|$long_ascii" "--name|$long_utf8" "--model|$long_ascii" "--os-version|$long_ascii" \
+  "--serial-number|$long_ascii" "--name|$(printf 'a\tb')"; do
+  option=${args%%|*} value=${args#*|}
+  run "invalid $option (${#value} characters)" 1 "$option" "$value" "$token"
+  expect_no_file
+  [ ! -s "$STUB_LOG" ] || fail "called the API"
+done
+run "100-byte name" 0 --name "$(printf 'x%.0s' $(seq 100))" "$token"
 
 run "unknown option" 2 --bogus "$token"
 expect_no_file
 
+run "--delete with metadata" 2 --delete "$work/x.json" --name x
+run "--update without metadata" 2 --update "$work/x.json"
+run "--update with a token too" 2 --update "$work/x.json" --name x "$token"
+run "--update and --delete" 2 --update "$work/x.json" --delete "$work/x.json"
 run "--delete without a profile" 2 --delete
 run "--delete with a token too" 2 --delete "$work/x.json" "$token"
 run "--delete with --delete-after" 2 --delete-after --delete "$work/x.json"
@@ -121,6 +145,29 @@ write_profile
 STUB_DELETE_STATUS=401 run "--delete, already deleted" 1 --delete "$work/profile.json"
 grep -q "probably already deleted" "$work/stderr" || fail "already deleted not reported"
 [ -e "$work/profile.json" ] || fail "profile removed after a failed delete"
+
+write_profile '.name = "old name"'
+run "--update" 0 --update "$work/profile.json" --name "new name" --model CCR2004
+grep -q "^PATCH .*/v1/accounts/0123456789abcdef0123456789abcdef/reg/t.00000000-0000-4000-8000-000000000001$" "$STUB_LOG" ||
+  fail "wrong update URL"
+grep -qx "Authorization: Bearer $api_token" "$STUB_LOG.stdin" || fail "did not send the profile's API token"
+jq -e '. == {name: "new name", model: "CCR2004"}' "$STUB_LOG.body" > /dev/null || fail "unexpected update body: $(cat "$STUB_LOG.body")"
+jq -e --arg token "$api_token" '.name == "new name" and .api_token == $token and .version == 1' "$work/profile.json" > /dev/null ||
+  fail "profile not updated: $(cat "$work/profile.json")"
+expect_not_deleted
+
+write_profile '.name = "old name"'
+run "--update without a name" 0 --update "$work/profile.json" --serial-number S1
+jq -e '.name == "old name"' "$work/profile.json" > /dev/null || fail "profile name changed"
+
+write_profile '.name = "old name"'
+STUB_PATCH_STATUS=400 STUB_FILTER='{result: null, success: false, errors: [{code: 2004, message: "bad device request"}]}' \
+  run "--update, API error" 1 --update "$work/profile.json" --name "new name"
+grep -q "2004: bad device request" "$work/stderr" || fail "API error not shown"
+jq -e '.name == "old name"' "$work/profile.json" > /dev/null || fail "profile changed after a failed update"
+
+run "--update, missing profile" 1 --update "$work/missing.json" --name x
+[ ! -s "$STUB_LOG" ] || fail "called the API"
 
 run "--delete, missing profile" 1 --delete "$work/missing.json"
 [ ! -s "$STUB_LOG" ] || fail "called the API"
