@@ -6,7 +6,7 @@ Cloudflare Mesh is an overlay network like ZeroTier and Tailscale, but instead o
 This is a single Bash script that registers a Mesh node by calling Cloudflare's API directly, the way [wgcf](https://github.com/ViRb3/wgcf) does for consumer WARP. Your WireGuard private key is generated locally and never leaves your machine. If this stops working, [wgcf-connector](https://github.com/AnimMouse/wgcf-connector) does the same with the official WARP client in Docker.
 
 ## Usage
-1. Make sure you have a [device profile](https://dash.cloudflare.com/?to=/:account/one/team-resources/devices/profiles) [set to WireGuard for the Cloudflare Mesh node](https://www.animmouse.com/p/setup-cloudflare-mesh-using-wireguard/#create-a-separate-device-profile-for-the-cloudflare-mesh-nodes).
+1. Optional: set the Mesh node's [device profile](https://dash.cloudflare.com/?to=/:account/one/team-resources/devices/profiles) to WireGuard, as in [my tutorial](https://www.animmouse.com/p/setup-cloudflare-mesh-using-wireguard/#create-a-separate-device-profile-for-the-cloudflare-mesh-nodes). wgcf-mesh gets a working WireGuard configuration under either a WireGuard or a MASQUE device profile.
 2. [Create a Mesh node](https://dash.cloudflare.com/?to=/:account/mesh) in the Cloudflare dashboard.
 3. Copy the Cloudflare Mesh token, which starts with `eyJhIjoi`.
 4. Run the script with the token:
@@ -15,6 +15,9 @@ This is a single Bash script that registers a Mesh node by calling Cloudflare's 
    bash wgcf-mesh.sh <token>
    ```
 5. It writes `wgcf-mesh-<registration_id>.conf` to your current directory, which you can use in WireGuard.
+
+> [!NOTE]
+> According to [Cloudflare's docs](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-mesh/get-started/), hostname routes, IPv6 CIDR routes and high availability don't work when the Mesh node's device profile uses WireGuard. wgcf-mesh always sets up a WireGuard tunnel, and whether these features work with it under a MASQUE device profile hasn't been tested yet.
 
 > [!TIP]
 > To keep the token out of your shell history and process list, pass `-` and give the token on standard input: `bash wgcf-mesh.sh - < token.txt`

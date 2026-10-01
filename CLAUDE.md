@@ -67,6 +67,10 @@ Main features:
 2. **Device profile for later deletion.** Optionally save a profile with `result.id`, `result.token` (the API token) and the account tag, and add a command that deletes the device from it without the Cloudflare dashboard. This would also replace `--delete-after`'s in-run deletion for CI. The profile holds a credential, so write it with mode 600 and keep it out of the WireGuard config unless decided otherwise. Delete is already verified: `DELETE /v1/accounts/{a}/reg/{id}` with `Authorization: Bearer <result.token>` returns 204.
 3. **Custom device name and metadata** shown in the dashboard: `name`, plus `model`, `os_version`, `serial_number` and `type`. These are the registration body fields `warp-svc` sends. Check which ones the dashboard shows, and whether they can be changed after registration, probably with `PATCH /v1/accounts/{a}/reg/{id}`.
 
+To verify:
+
+- **Mesh features that need MASQUE.** Cloudflare's [Get started](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-mesh/get-started/) page says: "Hostname routes, IPv6 CIDR routes, and high availability do not work if the device profile uses WireGuard instead." wgcf-mesh always produces a WireGuard tunnel, even under a MASQUE device profile (verified working, see `HANDOFF.md`). Test each of the three with a wgcf-mesh config on a MASQUE profile, to find out whether the limit comes from the device profile or from the tunnel protocol. Then update the README note and `API.md`.
+
 Nice to have:
 
 1. **Device posture heartbeat**, so the device shows as alive in the dashboard's Devices tab. The tunnel works without it, so it must stay optional, for example a command to run periodically on the server. Leads: `/v0/accounts/{a}/reg/{id}/posture` and `/v0/accounts/{a}/reg/{id}/devicestate`, and the registration response's `last_seen`.
