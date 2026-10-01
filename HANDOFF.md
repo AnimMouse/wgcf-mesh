@@ -12,7 +12,7 @@ Generate the Cloudflare Mesh WireGuard config by calling Cloudflare's registrati
 - **Browser app only if CORS allows it.** Check with `curl -i -X OPTIONS -H 'Origin: https://example.com' <endpoint>`. If it would need a proxy, don't build it: every user's Mesh token would pass through our server.
 - **`API.md` documents the protocol.** The Bash script is the canonical implementation.
 - **Scheduled CI smoke test** with a dedicated test token stored as a repository secret. It must delete the registration it creates (see open questions).
-- **Output must match wgcf-connector exactly:** same filename (`wgcf-connector-<registration_id>.conf`, or decide on a new name up front), same `[Interface]`/`[Peer]` layout, and the same failure rules: fail fast, validate every value, never write a partial file, mode 600.
+- **Output must match wgcf-connector exactly:** filename `wgcf-mesh-<id>.conf` (decided; see open questions), same `[Interface]`/`[Peer]` layout, and the same failure rules: fail fast, validate every value, never write a partial file, mode 600.
 - **Read Cloudflare's terms before publishing.** The API is undocumented and can change without notice.
 
 ## What we learned from wgcf-connector (verified 2026-10-01)
@@ -81,6 +81,83 @@ valid_until: string
 - **Every `connector new` creates a new registration** on the node (IDs `01a0f425…`, `01a0f428…`, …). Delete test nodes afterwards, and find the delete call so CI can clean up.
 - **The config works end to end:** the WireGuard handshake completes, and `https://1.1.1.1/cdn-cgi/trace` through the tunnel shows `warp=on` and `gateway=on`.
 
+## Findings from logs and strings (2026-10-01, WARP 2026.7.1377.0, fake token only)
+
+Method: `warp-svc` run in the wgcf-connector image with `RUST_LOG=debug`, then `warp-cli connector new` given a well-formed fake token (made-up `a`, `t`, `s`), then `strings` on `/bin/warp-svc`. `cfwarp_service_log.txt` logs the **full failed request, including the token**, so redact when reading it after a real run.
+
+### Registration endpoint (confirmed with curl)
+
+`POST https://api.devices.cloudflare.com/v1/accounts/{a}/warp_connector`, where `{a}` is the token's `a` field.
+
+- The ZT API host is `api.devices.cloudflare.com` (162.159.137.105, 162.159.138.105). `zero-trust-client.cloudflareclient.com` resolves to the same IPs. `api.cloudflareclient.com` (consumer) answers the same path too.
+- Plain curl with no special headers (no `CF-Client-Version`, no `Content-Type`) gets the same answer as `warp-svc` for a fake token: `400 {"success":false,"errors":[{"code":3004,"message":"invalid warp_connector_token"}]}`. An empty body gets `3006 missing key field`. The same path under `/v0/` returns 404.
+- So the client version header doesn't seem to be required, at least up to token validation. Re-check with a real token.
+
+Request body as logged by `warp-svc` (Rust debug names; the JSON names come from `conf.json`):
+```
+type: "linux"
+model: "VirtualBox 1.2"               <- from SMBIOS, optional
+name: "<hostname>"                    <- optional; probably the device name shown in the dashboard
+key: "<public key>"
+tos: "<RFC 3339 timestamp>"
+gateway_device_id: "<uuid>"           <- optional
+os_version: "6.18.48"                 <- optional
+serial_number: null
+warp_connector_token: "<the whole base64 token, unchanged>"
+tunnel_key_data: { key_type: NistP256 -> "secp256r1", tunnel_type: Masque -> "masque" }
+identifiers: SystemUser
+mtls_csr: null
+```
+The client sends the **token unchanged** in the body and puts only `a` in the path.
+
+### The token
+
+- `strings` shows `struct WarpConnectorToken with 3 elements` with fields `account_tag`, `tunnel_id` and `tunnel_secret`, in `V0`/`V1` variants. That matches the `a`/`t`/`s` keys, like `cloudflared` tunnel tokens. The client reads `a` for the URL path.
+
+### Other endpoints from `strings` (unverified)
+
+Probably auth `Authorization: Bearer <api_token>` like consumer WARP:
+- `/v1/accounts/{a}/reg/{reg_id}`: probably GET config, PATCH key rotation (the MASQUE→WireGuard switch; the binary has a `RotateKeysResponse` type) and DELETE (`DeleteRegistrationResponse`).
+- `/v0/accounts/{a}/reg/{reg_id}/{check,posture,client_certificates,devicestate,dex_results,virtualnetworks}` and `/v1/accounts/{a}/reg/{reg_id}/metrics`: not needed.
+
+### CORS: no browser app
+
+`OPTIONS` returns 404 with no `Access-Control-*` headers, and neither does `POST` with an `Origin` header. A browser page can't call the API directly, so per the decisions **don't build a browser version**.
+
+## Real-token results (2026-10-01): registration is one call
+
+With a real throwaway token and plain curl (no `CF-Client-Version`, no user agent), one call produced a working WireGuard config. The handshake completed, and `cdn-cgi/trace` over both IPv4 and IPv6 showed `warp=on` and `gateway=on`. The registration was then deleted.
+
+**Register:** `POST https://api.devices.cloudflare.com/v1/accounts/{a}/warp_connector` with `Content-Type: application/json` and this body:
+```json
+{"type":"linux","name":"<device name>","key":"<our Curve25519 public key>","tos":"<RFC 3339 now>","warp_connector_token":"<token>"}
+```
+- **Leave out `tunnel_key_data`.** With `{key_type:"curve25519",tunnel_type:"wireguard"}` the server returns `400 2004 bad device request`. Without it, the server accepts our Curve25519 key as-is (`result.key` equals our public key) and returns the WireGuard peer key `bmXOC+F1…`. `warp-svc`'s MASQUE-then-rotate dance comes from sending `secp256r1`/`masque` and isn't needed.
+- Errors: `3004 invalid warp_connector_token`, `3006 missing key field`, `2004 bad device request`.
+
+Response fields (`200`, `success: true`) that matter:
+```
+result.id                                 "t.<uuid>" (38 chars, includes the "t." prefix)
+result.token                              api_token, a UUID used as the Bearer token for /reg/{id}
+result.key                                our public key, echoed back
+result.name                               device name we sent
+result.account.organization               team name
+result.config.interface.addresses.{v4,v6} e.g. 100.96.0.x and 2606:4700:cf1:1000::x (no prefix length)
+result.config.peers[0].public_key         peer key
+result.config.peers[0].endpoint.{v4,v6}   "162.159.193.5:0" and "[2606:4700:100::a29f:c105]:0", port 0
+result.config.peers[0].endpoint.host      "engage.cloudflareclient.com:2408"
+result.config.peers[0].endpoint.ports[]   [2408, 500, 1701, 4500]
+result.connector.additional_interfaces.ipv6[]   one 21-char IPv6 string (probably a CIDR); cf. additional_interface_ips
+result.policy.tunnel_protocol             "" (empty, not "wireguard", when tunnel_key_data is omitted)
+```
+The response shape differs from `warp-svc`'s `conf.json`, which is the client's own reshaped copy. Endpoints come back as `ip:0` plus a `ports` list, so build `ip:port` from `ports`. wgcf-connector's `conf.json` had one endpoint entry per port.
+
+The response also has `override_codes` secrets, `physical_device_id`, `user.id`, `peer.*` and `dex_tests`. Don't print them.
+
+**Get:** `GET /v1/accounts/{a}/reg/{id}` with `Authorization: Bearer <result.token>` returns `200` with the same `result`.
+
+**Delete:** `DELETE /v1/accounts/{a}/reg/{id}` with the same Bearer token returns `204`. Afterwards GET returns `401 2016 unauthorized`. Still to check: whether the device also disappears from the dashboard.
+
 ## Plan
 
 Use a **throwaway** Mesh node on a WireGuard device profile, and delete it afterwards.
@@ -93,23 +170,29 @@ Use a **throwaway** Mesh node on a WireGuard device profile, and delete it after
 6. **Check CORS** on each endpoint, which decides whether a browser version is possible.
 7. **Find the delete call** (probably authenticated with `reg.json`'s `api_token`) for CI cleanup.
 
+Status: all steps done except 4, which is no longer needed. Next: write `API.md` and the Bash script, and settle the open questions below.
+
 ## Open questions
 
-- Does registration accept a Curve25519 key directly, or is the MASQUE-then-WireGuard two-step required?
-- What are the token's fields, and which parts go into which request?
-- How is a registration deleted?
-- Is `additional_interface_ips` needed in `Address`?
-- What `CF-Client-Version` or user agent does the API require, and does it reject old values over time? If so, CI needs to track WARP releases like wgcf-connector's `auto-update.yaml` does.
+- ~~Is registration two steps?~~ No. One call with our Curve25519 key and no `tunnel_key_data`.
+- ~~What are the token's fields?~~ `a`/`t`/`s` = account tag, tunnel ID, tunnel secret. `a` goes in the URL path and the whole token goes in the body.
+- ~~How is a registration deleted?~~ `DELETE /v1/accounts/{a}/reg/{id}` with `Authorization: Bearer <result.token>` returns `204`.
+- Is `additional_interface_ips` (`result.connector.additional_interfaces.ipv6[]`) needed in `Address`? The tunnel worked without it.
+- ~~Filename?~~ Decided 2026-10-01: `wgcf-mesh-<id>.conf`, where `<id>` is `result.id` as returned (`t.<uuid>`).
+- Which endpoint and port to use, and does `policy.tunnel_protocol` still need checking? It's empty when `tunnel_key_data` is omitted, so wgcf-connector's `wireguard` check doesn't carry over. Does a MASQUE-only device profile still hand out a working WireGuard config this way?
+- Is `tos` required? Is `name` shown in the dashboard?
+- What `CF-Client-Version` or user agent does the API require, and does it reject old values over time? Not required as of 2026-10-01, even for a real registration. If so, CI needs to track WARP releases like wgcf-connector's `auto-update.yaml` does.
 
 ## Carry over from wgcf-connector
 
 - **Workflows to copy:** `build-and-push.yaml` (native per-arch builds, push by digest, test, merge), `auto-update.yaml` (patch release per WARP bump) and the semver tag scheme. Always release with `gh release create`, not a bare tag push: `auto-update.yaml` computes the next version from the latest GitHub Release.
 - **Testing without a token:** stub `warp-cli`/`warp-svc` scripts that copy fake `reg.json`/`conf.json` fixtures, mounted over `/usr/local/bin`. The same fixture approach works for stubbing `curl` responses.
 - **Testing with a token:** never paste it into the chat. Save it with `read -rs t && printf %s "$t" > ~/.mesh-token && chmod 600 ~/.mesh-token` in the VS Code terminal, and pass it as `"$(cat ~/.mesh-token)"`. Redact `PrivateKey` and the organization when showing output.
-- **Tunnel test:** `alpine` with `--cap-add NET_ADMIN --sysctl net.ipv6.conf.all.disable_ipv6=0 --sysctl net.ipv4.conf.all.src_valid_mark=1`, `wireguard-tools-wg-quick`, and the config without its `DNS` line (Alpine's `wg-quick` needs resolvconf for it). Then check `https://1.1.1.1/cdn-cgi/trace`.
+- **Tunnel test:** `alpine` with `--cap-add NET_ADMIN --sysctl net.ipv6.conf.all.disable_ipv6=0 --sysctl net.ipv4.conf.all.src_valid_mark=1`, `wireguard-tools-wg-quick iptables ip6tables` (`wg-quick` fails without `ip6tables-restore`), and the config without its `DNS` line (Alpine's `wg-quick` needs resolvconf for it). Then check `https://1.1.1.1/cdn-cgi/trace`.
 
 ## Environment notes
 
 - The dev container shell is **zsh**: write `${img}:latest`, not `$img:latest` (zsh reads `:l` as a modifier), and unmatched globs are errors. Use `bash` for test scripts.
 - Docker-in-Docker works, including `--privileged` and `NET_ADMIN`. `binfmt_misc` isn't mounted, so there's no QEMU for `docker run`; BuildKit still emulates `RUN` steps. `warp-svc` doesn't start under QEMU anyway (`NetworkInfoError`).
+- `wg` isn't installed in the dev container, so generate keys with `openssl genpkey -algorithm X25519 -outform DER` (the last 32 bytes are the private key; `openssl pkey -pubout -outform DER`, last 32 bytes, is the public key).
 - `gh` is logged in as AnimMouse with `repo`, `read:org`, `gist` and `write:packages`.

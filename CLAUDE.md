@@ -9,7 +9,7 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 
 - **Bash is the canonical implementation.** Use `curl`, `jq`, and `wg genkey` or `openssl genpkey -algorithm X25519`, falling back to `wg` because macOS LibreSSL may lack X25519. No Go or Rust.
 - **`API.md` documents the protocol**: endpoints, methods, headers, request and response fields. Keep it in sync with the script.
-- **Output must match `wgcf-connector.sh`**: the same filename (`wgcf-connector-<registration_id>.conf` unless a new name is decided), the same `[Interface]`/`[Peer]` layout, `Address = <v6>/128, <v4>/32`, the same DNS line, `MTU = 1420`, the first endpoint active and the rest as `#Endpoint =` comments.
+- **Output must match `wgcf-connector.sh`**: the same `[Interface]`/`[Peer]` layout, but the filename is `wgcf-mesh-<id>.conf` (`<id>` is the registration's `result.id`). `Address = <v6>/128, <v4>/32`, the same DNS line, `MTU = 1420`, the first endpoint active and the rest as `#Endpoint =` comments.
 - **Never report success when something failed.** Fail fast. Read each value once with `jq -er`, reject missing, `null` or empty values, and validate them all before writing. Never write a partial file. Use `umask 077` so the file is mode 600. `set -e` doesn't catch a failing `$(...)` inside a heredoc, so don't put command substitutions there.
 - **Browser version only if CORS allows it.** Never proxy requests through a server we run: users' Mesh tokens must not pass through it.
 
@@ -19,7 +19,7 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 - When inspecting the token or API responses, print key names, types and lengths, not values. Redact `PrivateKey`, `secret_key`, `api_token` and the organization in anything shown.
 - **Only use throwaway Mesh nodes.** Every registration creates a new device on the node, so delete test registrations afterwards. CI must delete what it creates.
 - **Test without a token** by stubbing `curl` with JSON fixtures, the same way wgcf-connector stubs `warp-cli`/`warp-svc`.
-- **Tunnel test:** an `alpine` container with `--cap-add NET_ADMIN --sysctl net.ipv6.conf.all.disable_ipv6=0 --sysctl net.ipv4.conf.all.src_valid_mark=1` and `wireguard-tools-wg-quick`, using the config without its `DNS` line. A working tunnel shows `warp=on` at `https://1.1.1.1/cdn-cgi/trace`.
+- **Tunnel test:** an `alpine` container with `--cap-add NET_ADMIN --sysctl net.ipv6.conf.all.disable_ipv6=0 --sysctl net.ipv4.conf.all.src_valid_mark=1` and `wireguard-tools-wg-quick iptables ip6tables`, using the config without its `DNS` line. A working tunnel shows `warp=on` at `https://1.1.1.1/cdn-cgi/trace`.
 
 ## Environment
 
