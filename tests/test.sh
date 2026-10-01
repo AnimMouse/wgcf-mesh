@@ -138,7 +138,7 @@ write_profile
 run "--delete" 0 --delete "$work/profile.json"
 expect_deleted
 grep -qx "Authorization: Bearer $api_token" "$STUB_LOG.stdin" || fail "did not send the profile's API token"
-[ ! -e "$work/profile.json" ] || fail "profile not removed"
+[ -e "$work/profile.json" ] || fail "profile removed"
 grep -q "^Deleted registration" "$work/stdout" || fail "deletion not reported"
 
 write_profile

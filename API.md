@@ -115,7 +115,7 @@ Returns `204` with an empty body. After that, the token is rejected with `401` (
 
 `wgcf-mesh.sh --update <profile>` sends the update request above with the metadata options given, and saves a new `name` in the profile.
 
-`wgcf-mesh.sh --delete <profile>` sends the delete request above and removes the profile when the API answers `204`. For a registration that was already deleted, the API answers `401` (`2016 unauthorized`).
+`wgcf-mesh.sh --delete <profile>` sends the delete request above and treats `204` as success. It doesn't remove the profile or the config. For a registration that was already deleted, the API answers `401` (`2016 unauthorized`).
 
 ## Errors
 

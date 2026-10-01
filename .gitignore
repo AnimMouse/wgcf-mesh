@@ -1,0 +1,3 @@
+# Generated WireGuard configs and device profiles hold private keys and API tokens.
+wgcf-mesh-*.conf
+wgcf-mesh-*.json

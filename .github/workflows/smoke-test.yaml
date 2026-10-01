@@ -39,7 +39,9 @@ jobs:
             grep -Eq "$line" "${conf[0]}" || { echo "::error::No line matching $line"; exit 1; }
           done
           bash "$script" --delete "${profile[0]}"
-          [ ! -e "${profile[0]}" ] || { echo "::error::The device profile was not removed"; exit 1; }
+          [ -e "${profile[0]}" ] || { echo "::error::The device profile was removed"; exit 1; }
+          # --delete keeps the profile, so remove it here or the trap above would delete again.
+          rm -f "${profile[0]}"
           rm -f "${conf[0]}"
         env:
           MESH_TOKEN: ${{ secrets.MESH_TOKEN }}
