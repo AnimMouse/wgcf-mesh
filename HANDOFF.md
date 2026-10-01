@@ -191,7 +191,7 @@ One node on the official client (MASQUE) and the other on wgcf-mesh (WireGuard),
 
 Notes:
 - Interface addresses are handed out per registration (`.1`, `.3`, `.5`, …), not fixed per node, so always read them from the config.
-- **Keepalive:** the wgcf-mesh config has no `PersistentKeepalive`, so a node that only receives traffic doesn't handshake until it sends something, and NAT can drop the mapping. The test set `persistent-keepalive 25`. Consider adding `PersistentKeepalive = 25` to the generated `[Peer]`, since a Mesh node is expected to receive traffic.
+- **Keepalive:** the wgcf-mesh config has no `PersistentKeepalive`, so a node that only receives traffic doesn't handshake until it sends something, and NAT can drop the mapping. The test set `persistent-keepalive 25`. The generated config now has `PersistentKeepalive = 60` (#9).
 
 ## Plan
 
