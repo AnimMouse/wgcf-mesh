@@ -9,7 +9,7 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 
 - **Bash is the canonical implementation.** Use `curl`, `jq`, and `wg genkey` or `openssl genpkey -algorithm X25519`, preferring `wg`. macOS's LibreSSL 3.3.6 lacks X25519 (verified in CI), so macOS users need `brew install wireguard-tools`. No Go or Rust.
 - **`API.md` documents the protocol**: endpoints, methods, headers, request and response fields. Keep it in sync with the script.
-- **Output must match `wgcf-connector.sh`**: the same `[Interface]`/`[Peer]` layout, but the filename is `wgcf-mesh-<id>.conf` (`<id>` is the registration's `result.id`). `Address = <v6>/128, <v4>/32`, the same DNS line, `MTU = 1420`, the first endpoint active and the rest as `#Endpoint =` comments.
+- **Output must match `wgcf-connector.sh`**: the same `[Interface]`/`[Peer]` layout, but the filename is `wgcf-mesh-<id>.conf`, plus a `wgcf-mesh-<id>.json` device profile (`<id>` is the registration's `result.id`). `Address = <v6>/128, <v4>/32`, the same DNS line, `MTU = 1420`, the first endpoint active and the rest as `#Endpoint =` comments.
 - **Never report success when something failed.** Fail fast. Read each value once with `jq -er`, reject missing, `null` or empty values, and validate them all before writing. Never write a partial file. Use `umask 077` so the file is mode 600. `set -e` doesn't catch a failing `$(...)` inside a heredoc, so don't put command substitutions there.
 - **Browser version only if CORS allows it.** Never proxy requests through a server we run: users' Mesh tokens must not pass through it.
 
@@ -24,7 +24,7 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
   docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:1.30.1 --offline .
   ```
   To fix formatting, run shfmt with `-w` instead of `-d`.
-- Real run without leaving a device behind: `./wgcf-mesh.sh --delete-after - < ~/.mesh-token`.
+- Real run without leaving a device behind: `./wgcf-mesh.sh --delete-after - < ~/.mesh-token`, or register normally and then `./wgcf-mesh.sh --delete wgcf-mesh-<id>.json`.
 
 ## Secrets and testing
 
@@ -64,7 +64,7 @@ Planned features, in priority order. Leads come from `strings` on `warp-svc` and
 Main features:
 
 1. **Service token auth.** Register with a Cloudflare Access service token instead of a Mesh token. Leads: the client's `RegistrationAuthMethod` has an `AccessServiceToken { id, key }` variant, and the binary has `cf-access-client-id`/`cf-access-client-secret` header names.
-2. **Device profile for later deletion.** Optionally save a profile with `result.id`, `result.token` (the API token) and the account tag, and add a command that deletes the device from it without the Cloudflare dashboard. This would also replace `--delete-after`'s in-run deletion for CI. The profile holds a credential, so write it with mode 600 and keep it out of the WireGuard config unless decided otherwise. Delete is already verified: `DELETE /v1/accounts/{a}/reg/{id}` with `Authorization: Bearer <result.token>` returns 204.
+2. ~~**Device profile for later deletion.**~~ Done: every registration also writes `wgcf-mesh-<id>.json` (mode 600) with the account tag, `result.id` and `result.token`, and `--delete <profile>` deletes the device. The profile stays out of the WireGuard config. The smoke test registers and then deletes through the profile.
 3. **Custom device name and metadata** shown in the dashboard: `name`, plus `model`, `os_version`, `serial_number` and `type`. These are the registration body fields `warp-svc` sends. Check which ones the dashboard shows, and whether they can be changed after registration, probably with `PATCH /v1/accounts/{a}/reg/{id}`.
 
 To verify:

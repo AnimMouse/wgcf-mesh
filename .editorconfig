@@ -8,8 +8,14 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 2
 
-# shfmt reads these. tests/stub/curl has no extension, so it is listed by name.
-[{*.sh,tests/stub/*}]
+# shfmt reads these. tests/stub/curl has no extension, so it is listed by path. These are separate
+# sections because a brace list containing a path makes *.sh match only in the root directory.
+[*.sh]
+shell_variant = bash
+switch_case_indent = true
+space_redirects = true
+
+[tests/stub/*]
 shell_variant = bash
 switch_case_indent = true
 space_redirects = true

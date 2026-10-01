@@ -21,18 +21,25 @@ jobs:
         with:
           persist-credentials: false
 
-      # Registers a real Mesh node with a dedicated test token, then deletes the registration.
+      # Registers a real Mesh node with a dedicated test token, then deletes it with the device profile it saved.
       - name: Register and delete
         working-directory: ${{ runner.temp }}
         run: |
           [ -n "$MESH_TOKEN" ] || { echo "::error::The MESH_TOKEN repository secret is not set"; exit 1; }
-          bash "$GITHUB_WORKSPACE/wgcf-mesh.sh" --delete-after - <<< "$MESH_TOKEN"
+          script=$GITHUB_WORKSPACE/wgcf-mesh.sh
+          bash "$script" - <<< "$MESH_TOKEN"
           conf=(wgcf-mesh-*.conf)
+          profile=(wgcf-mesh-*.json)
+          [ ${#profile[@]} -eq 1 ] && [ -f "${profile[0]}" ] || { echo "::error::Expected one device profile"; exit 1; }
+          # If a check below fails, still delete the device so it isn't left behind.
+          trap '[ ! -f "${profile[0]}" ] || bash "$script" --delete "${profile[0]}"' EXIT
           [ ${#conf[@]} -eq 1 ] && [ -f "${conf[0]}" ] || { echo "::error::Expected one configuration file"; exit 1; }
           # Check the layout without printing addresses to the public log.
           for line in '^PrivateKey = ' '^Address = .+/128, .+/32$' '^PublicKey = ' '^Endpoint = '; do
             grep -Eq "$line" "${conf[0]}" || { echo "::error::No line matching $line"; exit 1; }
           done
+          bash "$script" --delete "${profile[0]}"
+          [ ! -e "${profile[0]}" ] || { echo "::error::The device profile was not removed"; exit 1; }
           rm -f "${conf[0]}"
         env:
           MESH_TOKEN: ${{ secrets.MESH_TOKEN }}
