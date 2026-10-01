@@ -1,0 +1,33 @@
+name: Smoke test
+on:
+  schedule:
+    - cron: '7 11 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Registers a real Mesh node with a dedicated test token, then deletes the registration.
+      - name: Register and delete
+        working-directory: ${{ runner.temp }}
+        run: |
+          [ -n "$MESH_TOKEN" ] || { echo "::error::The MESH_TOKEN repository secret is not set"; exit 1; }
+          bash "$GITHUB_WORKSPACE/wgcf-mesh.sh" --delete-after - <<< "$MESH_TOKEN"
+          conf=(wgcf-mesh-*.conf)
+          [ ${#conf[@]} -eq 1 ] && [ -f "${conf[0]}" ] || { echo "::error::Expected one configuration file"; exit 1; }
+          # Check the layout without printing addresses to the public log.
+          for line in '^PrivateKey = ' '^Address = .+/128, .+/32$' '^PublicKey = ' '^Endpoint = '; do
+            grep -Eq "$line" "${conf[0]}" || { echo "::error::No line matching $line"; exit 1; }
+          done
+          rm -f "${conf[0]}"
+        env:
+          MESH_TOKEN: ${{ secrets.MESH_TOKEN }}

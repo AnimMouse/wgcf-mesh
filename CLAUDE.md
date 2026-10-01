@@ -13,6 +13,12 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 - **Never report success when something failed.** Fail fast. Read each value once with `jq -er`, reject missing, `null` or empty values, and validate them all before writing. Never write a partial file. Use `umask 077` so the file is mode 600. `set -e` doesn't catch a failing `$(...)` inside a heredoc, so don't put command substitutions there.
 - **Browser version only if CORS allows it.** Never proxy requests through a server we run: users' Mesh tokens must not pass through it.
 
+## Commands
+
+- Offline tests: `bash tests/test.sh` (stubs `curl` with `tests/stub/curl` and `tests/fixtures/`).
+- Lint: `docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:stable wgcf-mesh.sh tests/test.sh tests/stub/curl` and `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
+- Real run without leaving a device behind: `./wgcf-mesh.sh --delete-after - < ~/.mesh-token`.
+
 ## Secrets and testing
 
 - **Never ask for the Mesh token in chat, and never print it.** It lives in `~/.mesh-token`, saved by the user with `read -rs t && printf %s "$t" > ~/.mesh-token && chmod 600 ~/.mesh-token`. Use it as `"$(cat ~/.mesh-token)"`.
@@ -30,5 +36,5 @@ Generates a Cloudflare Mesh (formerly WARP Connector) WireGuard config by callin
 ## Releases and CI
 
 - Use semver tags, and always release with `gh release create` rather than a bare tag push. Workflows compute the next version from the latest GitHub Release.
-- Copy workflow patterns from wgcf-connector's `.github/workflows/`. Pin actions to major versions, and `dependabot.yaml` updates them weekly.
+- `test.yaml` runs on pushes and PRs, and `smoke-test.yaml` runs daily against the real API with the `MESH_TOKEN` secret. Copy patterns from wgcf-connector's `.github/workflows/`. Pin actions to major versions, and `dependabot.yaml` updates them weekly.
 - Check Cloudflare's terms before publishing anything.

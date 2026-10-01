@@ -1,0 +1,45 @@
+# wgcf-mesh
+Generate a [Cloudflare Mesh](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-mesh/) (formerly WARP Connector) WireGuard configuration without Docker or the WARP client.
+
+Cloudflare Mesh is an overlay network like ZeroTier and Tailscale, but instead of connecting peer to peer, each node connects to the nearest Cloudflare PoP over WireGuard, like NordVPN Meshnet.
+
+This is a single Bash script that registers a Mesh node by calling Cloudflare's API directly, the way [wgcf](https://github.com/ViRb3/wgcf) does for consumer WARP. Your WireGuard private key is generated locally and never leaves your machine. If this stops working, [wgcf-connector](https://github.com/AnimMouse/wgcf-connector) does the same with the official WARP client in Docker.
+
+## Usage
+1. Make sure you have a [device profile](https://dash.cloudflare.com/?to=/:account/one/team-resources/devices/profiles) [set to WireGuard for the Cloudflare Mesh node](https://www.animmouse.com/p/setup-cloudflare-mesh-using-wireguard/#create-a-separate-device-profile-for-the-cloudflare-mesh-nodes).
+2. [Create a Mesh node](https://dash.cloudflare.com/?to=/:account/mesh) in the Cloudflare dashboard.
+3. Copy the Cloudflare Mesh token, which starts with `eyJhIjoi`.
+4. Run the script with the token:
+   ```
+   curl -fsSLO https://raw.githubusercontent.com/AnimMouse/wgcf-mesh/main/wgcf-mesh.sh
+   bash wgcf-mesh.sh <token>
+   ```
+5. It writes `wgcf-mesh-<registration_id>.conf` to your current directory, which you can use in WireGuard.
+
+> [!TIP]
+> To keep the token out of your shell history and process list, pass `-` and give the token on standard input: `bash wgcf-mesh.sh - < token.txt`
+
+> [!TIP]
+> If you got an endpoint IPv4 address starting with `162.159.192.x`, use `162.159.193.x` instead to have lower latency.
+
+> [!TIP]
+> You can check out my complete tutorial [here](https://www.animmouse.com/p/setup-cloudflare-mesh-using-wireguard/).
+
+### Requirements
+- Bash, `curl` and `jq` 1.6 or later.
+- `wg` from wireguard-tools, or OpenSSL with X25519 support, to generate the key pair. On macOS, if the built-in LibreSSL fails, install wireguard-tools: `brew install wireguard-tools`.
+
+> [!TIP]
+> You can use GitHub Codespaces for this.
+
+### Options
+| Option | Use |
+| --- | --- |
+| `--delete-after` | Delete the registration right after writing the configuration, so the configuration no longer works. For testing. |
+
+Each run registers a new device on the Mesh node. Remove old devices in the Cloudflare dashboard.
+
+## How it works
+See [API.md](API.md) for the protocol. The API is undocumented, and Cloudflare can change it without notice. A scheduled CI test checks it still works.
+
+This project is not affiliated with or endorsed by Cloudflare.
