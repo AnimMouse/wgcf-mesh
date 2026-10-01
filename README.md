@@ -14,7 +14,9 @@ This is a single Bash script that registers a Mesh node by calling Cloudflare's 
    curl -fsSLO https://raw.githubusercontent.com/AnimMouse/wgcf-mesh/main/wgcf-mesh.sh
    bash wgcf-mesh.sh <token>
    ```
-5. It writes `wgcf-mesh-<registration_id>.conf` to your current directory, which you can use in WireGuard.
+5. It writes two files to your current directory:
+   - `wgcf-mesh-<registration_id>.conf`, the configuration to use in WireGuard.
+   - `wgcf-mesh-<registration_id>.json`, the device profile. Keep it to delete the device later, see [Delete a device](#delete-a-device). It contains a token that can delete this device, so keep it private, but you don't need to copy it to the device that runs WireGuard.
 
 > [!NOTE]
 > According to [Cloudflare's docs](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-mesh/get-started/), hostname routes, IPv6 CIDR routes and high availability don't work when the Mesh node's device profile uses WireGuard. wgcf-mesh always sets up a WireGuard tunnel, and whether these features work with it under a MASQUE device profile hasn't been tested yet.
@@ -35,12 +37,18 @@ This is a single Bash script that registers a Mesh node by calling Cloudflare's 
 > [!TIP]
 > You can use GitHub Codespaces for this.
 
+### Delete a device
+Each run registers a new device on the Mesh node. To delete one you no longer use, pass its device profile:
+```
+bash wgcf-mesh.sh --delete wgcf-mesh-<registration_id>.json
+```
+This deletes the device from Cloudflare and removes the profile, and its configuration stops working. Devices without a profile can be removed in the Cloudflare dashboard.
+
 ### Options
 | Option | Use |
 | --- | --- |
-| `--delete-after` | Delete the registration right after writing the configuration, so the configuration no longer works. For testing. |
-
-Each run registers a new device on the Mesh node. Remove old devices in the Cloudflare dashboard.
+| `--delete <profile>` | Delete the device saved in a `wgcf-mesh-<registration_id>.json` device profile. |
+| `--delete-after` | Delete the registration right after writing the configuration, so the configuration no longer works, and write no device profile. For testing. |
 
 ## How it works
 See [API.md](API.md) for the protocol. The API is undocumented, and Cloudflare can change it without notice. A scheduled CI test checks it still works.

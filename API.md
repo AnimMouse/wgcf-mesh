@@ -90,6 +90,16 @@ Authorization: Bearer <result.token>
 
 Returns `204` with an empty body. After that, the token is rejected with `401` (`2016 unauthorized`).
 
+## Device profile
+
+`wgcf-mesh.sh` saves what it needs to delete the registration later in `wgcf-mesh-<result.id>.json`, mode 600, next to the WireGuard config:
+
+```json
+{"version": 1, "account": "<a>", "id": "<result.id>", "api_token": "<result.token>"}
+```
+
+`wgcf-mesh.sh --delete <profile>` sends the delete request above and removes the profile when the API answers `204`. For a registration that was already deleted, the API answers `401` (`2016 unauthorized`).
+
 ## Errors
 
 Errors return a non-2xx status and `"success": false`:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Register a Cloudflare Mesh node and write its WireGuard configuration.
-# See API.md for the protocol.
+# Register a Cloudflare Mesh node and write its WireGuard configuration and a device profile,
+# or delete a registration using its device profile. See API.md for the protocol.
 set -euo pipefail
 
 api=https://api.devices.cloudflare.com/v1
@@ -20,19 +20,20 @@ api_error() {
   jq -er '[.errors[]? | "\(.code): \(.message)"] | select(length > 0) | join(", ")' <<< "$1" 2> /dev/null || echo "HTTP $2"
 }
 
-# Delete the registration. The API answers 204 on success.
+# Delete the registration $id. The API answers 204 on success; the HTTP status is left in $delete_status.
 delete_registration() {
-  local status
+  delete_status=
   # Send the bearer token on standard input so it doesn't show up in the process list.
-  status=$(printf 'Authorization: Bearer %s\n' "$api_token" |
+  delete_status=$(printf 'Authorization: Bearer %s\n' "$api_token" |
     curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -X DELETE -H @- "$api/accounts/$account/reg/$id") &&
-    [ "$status" = 204 ]
+    [ "$delete_status" = 204 ]
 }
 
-# Remove the temporary file, and delete the registration so a failed run doesn't leave a device behind.
+# Remove temporary and partly written files, and delete the registration so a failed run doesn't leave a device behind.
 cleanup() {
-  if [ -n "${tmp:-}" ]; then rm -f "$tmp"; fi
-  if [ -n "${api_token:-}" ]; then
+  rm -f "${tmp_conf:-}" "${tmp_profile:-}"
+  if ${armed:-false}; then
+    rm -f "${saved_profile:-}"
     delete_registration || echo "Warning: could not delete registration $id, remove it in the Cloudflare dashboard" >&2
   fi
 }
@@ -41,19 +42,67 @@ trap cleanup EXIT
 usage() {
   echo "Usage: $0 [--delete-after] <token>" >&2
   echo "       $0 [--delete-after] - < token-file" >&2
-  echo "  --delete-after  delete the registration after writing the configuration, for testing" >&2
+  echo "       $0 --delete <profile>" >&2
+  echo "  --delete-after      delete the registration after writing the configuration, for testing" >&2
+  echo "  --delete <profile>  delete the registration saved in a wgcf-mesh-<id>.json device profile" >&2
   exit 2
 }
 
+# Print a field from the device profile, failing unless it matches the pattern $2.
+profile_field() {
+  jq -er --arg pattern "$2" ".$1 | strings | select(test(\$pattern))" "$profile" 2> /dev/null ||
+    die "$profile is not a valid wgcf-mesh device profile"
+}
+
+# Delete the registration saved in the device profile $profile, then remove the profile.
+delete_from_profile() {
+  [ -f "$profile" ] || die "$profile not found"
+  account=$(profile_field account '^[0-9a-f]{32}$')
+  id=$(profile_field id '^[A-Za-z0-9._-]+$')
+  [[ $id != *..* ]] || die "$profile is not a valid wgcf-mesh device profile"
+  api_token=$(profile_field api_token '^[A-Za-z0-9._-]+$')
+  if ! delete_registration; then
+    case $delete_status in
+      401 | 404) die "could not delete registration $id (HTTP $delete_status). It was probably already deleted, check the Cloudflare dashboard." ;;
+      *) die "could not delete registration $id${delete_status:+ (HTTP $delete_status)}" ;;
+    esac
+  fi
+  rm -f "$profile"
+  echo "Deleted registration $id and removed $profile, so wgcf-mesh-$id.conf no longer works"
+}
+
 delete_after=false
-if [ "${1:-}" = --delete-after ]; then
-  delete_after=true
+profile=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --delete-after) delete_after=true ;;
+    --delete)
+      [ $# -ge 2 ] || usage
+      profile=$2
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*) usage ;;
+    *) break ;;
+  esac
   shift
+done
+if [ -n "$profile" ]; then
+  if [ $# -ne 0 ] || $delete_after; then usage; fi
+else
+  [ $# -eq 1 ] || usage
 fi
-[ $# -eq 1 ] || usage
 for cmd in curl jq; do
   command -v "$cmd" > /dev/null || die "$cmd is required"
 done
+
+if [ -n "$profile" ]; then
+  delete_from_profile
+  exit 0
+fi
 
 token=$1
 if [ "$token" = - ]; then
@@ -95,6 +144,8 @@ id=$(field .result.id)
 [[ $id =~ ^[A-Za-z0-9._-]+$ && $id != *..* ]] ||
   die "registration ID $id is invalid, remove the new device in the Cloudflare dashboard"
 api_token=$(field .result.token)
+[[ $api_token =~ ^[A-Za-z0-9._-]+$ ]] || die "API token is invalid, remove the new device in the Cloudflare dashboard"
+armed=true
 [ "$(field .result.key)" = "$public_key" ] || die "the API did not accept our public key"
 peer_key=$(field '.result.config.peers[0].public_key')
 [[ $peer_key =~ $key_pattern ]] || die "peer public key is not a WireGuard key"
@@ -112,9 +163,10 @@ endpoint=$(head -n 1 <<< "$endpoints")
 other_endpoints=$(tail -n +2 <<< "$endpoints" | sed 's/^/#Endpoint = /')
 
 file=wgcf-mesh-$id.conf
+profile_file=wgcf-mesh-$id.json
 umask 077
-tmp=$(mktemp ".$file.XXXXXX")
-cat > "$tmp" << EOL
+tmp_conf=$(mktemp ".$file.XXXXXX")
+cat > "$tmp_conf" << EOL
 # Registration ID: $id
 # Organization: $organization
 [Interface]
@@ -129,14 +181,25 @@ AllowedIPs = ::/0, 0.0.0.0/0
 Endpoint = $endpoint
 $other_endpoints
 EOL
-mv "$tmp" "$file"
-tmp=
-echo "Saved $file"
 if $delete_after; then
-  if ! delete_registration; then
-    api_token=
-    die "could not delete registration $id, remove it in the Cloudflare dashboard"
-  fi
+  mv "$tmp_conf" "$file"
+  tmp_conf=
+  echo "Saved $file"
+  armed=false
+  delete_registration || die "could not delete registration $id, remove it in the Cloudflare dashboard"
   echo "Deleted registration $id, so $file no longer works"
+  exit 0
 fi
-api_token=
+
+# The device profile holds the API token that can delete this device later, so it stays out of the WireGuard config.
+tmp_profile=$(mktemp ".$profile_file.XXXXXX")
+jq -n --arg account "$account" --arg id "$id" --arg api_token "$api_token" \
+  '{version: 1, account: $account, id: $id, api_token: $api_token}' > "$tmp_profile"
+mv "$tmp_profile" "$profile_file"
+tmp_profile=
+saved_profile=$profile_file
+mv "$tmp_conf" "$file"
+tmp_conf=
+armed=false
+echo "Saved $file"
+echo "Saved $profile_file, keep it to delete this device later with: $0 --delete $profile_file"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stand-in for curl. Logs each call to $STUB_LOG and answers a registration with
+# Stand-in for curl. Logs each call to $STUB_LOG, and the headers sent on standard input to $STUB_LOG.stdin.
+# Answers a registration with
 # tests/fixtures/register.json, transformed by the jq filter $STUB_FILTER ($key is the sent public key).
 set -euo pipefail
 method=GET
@@ -23,5 +24,6 @@ if [ "$method" = POST ]; then
   jq --arg key "$key" "(.result.key = \$key) | ${STUB_FILTER:-.}" "$(dirname "$0")/../fixtures/register.json"
   printf '\n%s' "${STUB_STATUS:-200}"
 elif [ "$method" = DELETE ]; then
+  echo "$input" >> "$STUB_LOG.stdin"
   printf %s "${STUB_DELETE_STATUS:-204}"
 fi
