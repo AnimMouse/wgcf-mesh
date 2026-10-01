@@ -58,10 +58,11 @@ jobs:
             runner: ubuntu-latest
           - name: Ubuntu, wg
             runner: ubuntu-latest
-            wg: true
-          - name: macOS, LibreSSL
+            wg: apt
+          # Apple's LibreSSL can't generate X25519 keys, so macOS users need wireguard-tools.
+          - name: macOS, wg
             runner: macos-latest
-            libressl: true
+            wg: brew
     name: Test (${{ matrix.name }})
     permissions:
       contents: read
@@ -72,17 +73,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install wireguard-tools
-        if: matrix.wg
+      - name: Install wireguard-tools with apt
+        if: matrix.wg == 'apt'
         run: sudo apt-get -qq update && sudo apt-get -qq install --no-install-recommends wireguard-tools
 
-      # The runner has Homebrew OpenSSL first on PATH, but users get Apple's LibreSSL.
-      - name: Use the system LibreSSL
-        if: matrix.libressl
-        run: |
-          mkdir "$RUNNER_TEMP/bin"
-          ln -s /usr/bin/openssl "$RUNNER_TEMP/bin/openssl"
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Install wireguard-tools with Homebrew
+        if: matrix.wg == 'brew'
+        run: brew install --quiet wireguard-tools
 
       - name: Show tool versions
         run: |

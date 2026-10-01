@@ -27,7 +27,7 @@ This is a single Bash script that registers a Mesh node by calling Cloudflare's 
 
 ### Requirements
 - Bash, `curl` and `jq` 1.6 or later.
-- `wg` from wireguard-tools, or OpenSSL with X25519 support, to generate the key pair. On macOS, if the built-in LibreSSL fails, install wireguard-tools: `brew install wireguard-tools`.
+- `wg` from wireguard-tools, or OpenSSL with X25519 support, to generate the key pair. macOS's built-in LibreSSL can't generate WireGuard keys, so on macOS install wireguard-tools: `brew install wireguard-tools`.
 
 > [!TIP]
 > You can use GitHub Codespaces for this.
