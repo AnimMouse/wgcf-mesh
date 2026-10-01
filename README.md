@@ -37,6 +37,17 @@ This is a single Bash script that registers a Mesh node by calling Cloudflare's 
 > [!TIP]
 > You can use GitHub Codespaces for this.
 
+### Name a device
+Each device is called `wgcf-mesh` in the Cloudflare dashboard unless you name it. You can also set its model, OS version and serial number:
+```
+bash wgcf-mesh.sh --name hq-router --model RB5009UG+S+ --os-version 7.20.1 --serial-number HGF09ABCDEF - < token.txt
+```
+To change these later, pass the device profile and the options to change:
+```
+bash wgcf-mesh.sh --update wgcf-mesh-<registration_id>.json --name branch-router
+```
+Each value can be up to 100 bytes. Cloudflare keeps only the version number from the OS version if it finds one, so `RouterOS 7.20.1` is shown as `7.20.1`. The `# Device name:` comment in an existing configuration file isn't updated.
+
 ### Delete a device
 Each run registers a new device on the Mesh node. To delete one you no longer use, pass its device profile:
 ```
@@ -47,6 +58,11 @@ This deletes the device from Cloudflare and removes the profile, and its configu
 ### Options
 | Option | Use |
 | --- | --- |
+| `--name <name>` | Device name in the Cloudflare dashboard. `wgcf-mesh` by default. |
+| `--model <model>` | Device model. |
+| `--os-version <version>` | OS version. |
+| `--serial-number <serial>` | Serial number. |
+| `--update <profile>` | Change the name, model, OS version or serial number of the device saved in a device profile. |
 | `--delete <profile>` | Delete the device saved in a `wgcf-mesh-<registration_id>.json` device profile. |
 | `--delete-after` | Delete the registration right after writing the configuration, so the configuration no longer works, and write no device profile. For testing. |
 

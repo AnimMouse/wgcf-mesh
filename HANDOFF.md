@@ -205,7 +205,7 @@ Use a **throwaway** Mesh node on a WireGuard device profile, and delete it after
 6. **Check CORS** on each endpoint, which decides whether a browser version is possible.
 7. **Find the delete call** (probably authenticated with `reg.json`'s `api_token`) for CI cleanup.
 
-Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh.sh` and the offline tests (`tests/test.sh`, with `curl` stubbed) are written. A real run produced a working tunnel over IPv4 and IPv6, and the registration was deleted afterwards. README and CI are written. All changes go through PRs, and the `main` ruleset requires the `CI` check. The device profile (`wgcf-mesh-<id>.json` and `--delete`) is implemented, and the daily smoke test registers and then deletes through it. Next: check Cloudflare's terms, then cut v1.0.0 with `gh release create`. After that, the `CLAUDE.md` roadmap.
+Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh.sh` and the offline tests (`tests/test.sh`, with `curl` stubbed) are written. A real run produced a working tunnel over IPv4 and IPv6, and the registration was deleted afterwards. README and CI are written. All changes go through PRs, and the `main` ruleset requires the `CI` check. The device profile (`wgcf-mesh-<id>.json`, `--update` and `--delete`) and device metadata (`--name`, `--model`, `--os-version`, `--serial-number`) are implemented, and the daily smoke test registers and then deletes through it. Next: check Cloudflare's terms, then cut v1.0.0 with `gh release create`. After that, the `CLAUDE.md` roadmap.
 
 ## Open questions
 
