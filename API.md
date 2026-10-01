@@ -67,7 +67,8 @@ A successful response has status `200` and `"success": true`. Fields used by `wg
 Other fields in the response (not used yet):
 
 - `result.config.peers[0].endpoint.host` (`engage.cloudflareclient.com:2408`)
-- `result.connector.additional_interfaces.ipv6[]`
+- `result.connector.additional_interfaces.ipv6[]`: an address of the Mesh node rather than the device, the same for every registration on that node (e.g. `2606:4700:cf1:2000::1`). The official client adds it to its interface as a deprecated, receive-only address. See `HANDOFF.md`.
+- `result.connector.routes.{ipv4,ipv6}[]` and `result.connector.nat_mode`: probably the node's advertised routes.
 - `result.policy`, the device profile. Its `tunnel_protocol` is empty under a WireGuard profile and `"masque"` under a MASQUE one. Either way the registration returns a working WireGuard config (verified 2026-10-01), so `wgcf-mesh.sh` ignores it.
 - `result.peer`, `result.user`, `result.override_codes` (secrets), `result.dex_tests`, and timestamps.
 
