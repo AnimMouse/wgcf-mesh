@@ -176,6 +176,19 @@ Setup: each node in its own container, with the host addresses on a `dummy0` int
 | Host IPv4 (IPv4 CIDR routes) | pass | pass |
 | **Host IPv6 (IPv6 CIDR routes)** | **fail: packets leave the sender's `wg0` and never reach the other node** | pass |
 
+### Mixed test: which side needs MASQUE
+
+One node on the official client (MASQUE) and the other on wgcf-mesh (WireGuard), run both ways round. The Host IPv6 test fails in both directions in both mixes. Cross-checks sourced from a Cloudflare IPv6 address instead of a CIDR address separate the causes:
+
+| Check | Result |
+| --- | --- |
+| WireGuard device (Cloudflare IPv6) → MASQUE node's IPv6 route | **pass**, packets arrive |
+| MASQUE device (Cloudflare IPv6) → WireGuard node's IPv6 route | **fail**, packets never arrive |
+| WireGuard node (from its IPv6 route) → anything | **fail**, dropped at Cloudflare |
+| IPv4 CIDR routes, every direction and mix | pass |
+
+**Conclusion: not a WireGuard protocol limitation.** The WireGuard tunnel carries IPv6 fine, including to IPv6 CIDR routes owned by MASQUE nodes. Cloudflare doesn't attach a node's IPv6 CIDR routes to a WireGuard registration: it won't deliver traffic for them to that node, and it drops traffic the node sends from them. IPv4 CIDR routes are attached for WireGuard registrations, so the route machinery exists for WireGuard. The limit is server-side and documented. Whether it's deliberate or an implementation gap (IPv6 CIDR routes arrived in May 2026, possibly built only for the MASQUE data plane) can't be told from outside.
+
 Notes:
 - Interface addresses are handed out per registration (`.1`, `.3`, `.5`, …), not fixed per node, so always read them from the config.
 - **Keepalive:** the wgcf-mesh config has no `PersistentKeepalive`, so a node that only receives traffic doesn't handshake until it sends something, and NAT can drop the mapping. The test set `persistent-keepalive 25`. Consider adding `PersistentKeepalive = 25` to the generated `[Peer]`, since a Mesh node is expected to receive traffic.

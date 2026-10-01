@@ -70,7 +70,7 @@ Main features:
 To verify:
 
 - **Mesh features that need MASQUE.** Cloudflare's [Get started](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-mesh/get-started/) page says: "Hostname routes, IPv6 CIDR routes, and high availability do not work if the device profile uses WireGuard instead." wgcf-mesh always produces a WireGuard tunnel, even under a MASQUE device profile.
-  - **IPv6 CIDR routes: tested 2026-10-02, don't work.** Between two nodes on a MASQUE profile, IPv6 traffic to a CIDR route leaves the sender's WireGuard tunnel and never reaches the other node. Cloudflare IPv4/IPv6 addresses and IPv4 CIDR routes work. The official client on MASQUE passes the same test. Setup and results are in `HANDOFF.md`.
+  - **IPv6 CIDR routes: tested 2026-10-02, don't work.** Between two nodes on a MASQUE profile, IPv6 traffic to a CIDR route leaves the sender's WireGuard tunnel and never reaches the other node. Cloudflare IPv4/IPv6 addresses and IPv4 CIDR routes work. The official client on MASQUE passes the same test. A mixed test showed it's server-side, not a WireGuard limit: a WireGuard device can reach a MASQUE node's IPv6 route, but Cloudflare doesn't route IPv6 CIDR routes owned by a WireGuard registration, either to it or from it. Setup and results are in `HANDOFF.md`.
   - Still to test: hostname routes and high availability.
   - Untested idea: the server may program IPv6 routes only for registrations made with `tunnel_key_data` `masque`/`secp256r1`. Ours omit it, and a MASQUE tunnel would need a MASQUE implementation, so this probably can't be fixed in Bash.
 
