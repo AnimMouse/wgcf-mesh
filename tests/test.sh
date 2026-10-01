@@ -63,6 +63,18 @@ fi
 grep -q "^POST .*/v1/accounts/0123456789abcdef0123456789abcdef/warp_connector$" "$STUB_LOG" || fail "wrong registration URL"
 expect_not_deleted
 
+run "unknown option" 2 --delete "$token"
+expect_no_file
+
+run "--delete-after" 0 --delete-after "$token"
+[ -f "$work/out/$conf" ] || fail "$conf not written"
+expect_deleted
+grep -q "^Deleted registration" "$work/stdout" || fail "deletion not reported"
+
+STUB_DELETE_STATUS=401 run "--delete-after, delete fails" 1 --delete-after "$token"
+grep -q "could not delete registration" "$work/stderr" || fail "failed deletion not reported"
+[ "$(grep -c '^DELETE' "$STUB_LOG")" -eq 1 ] || fail "expected exactly one DELETE, got $(grep -c '^DELETE' "$STUB_LOG")"
+
 STDIN=<(printf '%s\n' "$token") run "token on stdin" 0 -
 [ -f "$work/out/$conf" ] || fail "$conf not written"
 

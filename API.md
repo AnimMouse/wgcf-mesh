@@ -7,7 +7,7 @@ How `wgcf-mesh.sh` registers a Cloudflare Mesh node. This API is undocumented: i
 1. Decode the Mesh token to get the account tag.
 2. Generate a WireGuard (Curve25519) key pair locally.
 3. `POST` the public key and the token to the registration endpoint. The response contains everything the WireGuard config needs.
-4. Optionally, delete the registration later using the `token` from the response.
+4. Optionally, delete the registration later using the `token` from the response. `wgcf-mesh.sh --delete-after` does this right after writing the config, for testing.
 
 There is no second step. The WARP client registers a P-256 MASQUE key first and then rotates it to a WireGuard key, but that only happens because it sends `tunnel_key_data`. Leave that field out and the server accepts the WireGuard key directly.
 

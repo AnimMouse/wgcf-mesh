@@ -19,4 +19,6 @@ if [ "$method" = POST ]; then
   key=$(jq -r .key <<< "$input")
   jq --arg key "$key" "(.result.key = \$key) | ${STUB_FILTER:-.}" "$(dirname "$0")/../fixtures/register.json"
   printf '\n%s' "${STUB_STATUS:-200}"
+elif [ "$method" = DELETE ]; then
+  printf %s "${STUB_DELETE_STATUS:-204}"
 fi

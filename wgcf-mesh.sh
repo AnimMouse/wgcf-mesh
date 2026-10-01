@@ -20,22 +20,37 @@ api_error() {
   jq -er '[.errors[]? | "\(.code): \(.message)"] | select(length > 0) | join(", ")' <<< "$1" 2> /dev/null || echo "HTTP $2"
 }
 
-# Delete the registration so a failed run doesn't leave a device behind.
+# Delete the registration. The API answers 204 on success.
+delete_registration() {
+  local status
+  # Send the bearer token on standard input so it doesn't show up in the process list.
+  status=$(printf 'Authorization: Bearer %s\n' "$api_token" |
+    curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -X DELETE -H @- "$api/accounts/$account/reg/$id") &&
+    [ "$status" = 204 ]
+}
+
+# Remove the temporary file, and delete the registration so a failed run doesn't leave a device behind.
 cleanup() {
   if [ -n "${tmp:-}" ]; then rm -f "$tmp"; fi
   if [ -n "${api_token:-}" ]; then
-    printf 'Authorization: Bearer %s\n' "$api_token" |
-      curl -sS -o /dev/null --max-time 30 -X DELETE -H @- "$api/accounts/$account/reg/$id" ||
-      echo "Warning: could not delete registration $id, remove it in the Cloudflare dashboard" >&2
+    delete_registration || echo "Warning: could not delete registration $id, remove it in the Cloudflare dashboard" >&2
   fi
 }
 trap cleanup EXIT
 
-if [ $# -ne 1 ]; then
-  echo "Usage: $0 <token>" >&2
-  echo "       $0 - < token-file" >&2
+usage() {
+  echo "Usage: $0 [--delete-after] <token>" >&2
+  echo "       $0 [--delete-after] - < token-file" >&2
+  echo "  --delete-after  delete the registration after writing the configuration, for testing" >&2
   exit 2
+}
+
+delete_after=false
+if [ "${1:-}" = --delete-after ]; then
+  delete_after=true
+  shift
 fi
+[ $# -eq 1 ] || usage
 for cmd in curl jq; do
   command -v "$cmd" > /dev/null || die "$cmd is required"
 done
@@ -113,5 +128,12 @@ $other_endpoints
 EOL
 mv "$tmp" "$file"
 tmp=
-api_token=
 echo "Saved $file"
+if $delete_after; then
+  if ! delete_registration; then
+    api_token=
+    die "could not delete registration $id, remove it in the Cloudflare dashboard"
+  fi
+  echo "Deleted registration $id, so $file no longer works"
+fi
+api_token=
