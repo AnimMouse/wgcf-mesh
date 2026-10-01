@@ -158,6 +158,41 @@ The response also has `override_codes` secrets, `physical_device_id`, `user.id`,
 
 **Delete:** `DELETE /v1/accounts/{a}/reg/{id}` with the same Bearer token returns `204`. Afterwards GET returns `401 2016 unauthorized`. Still to check: whether the device also disappears from the dashboard.
 
+## IPv6 CIDR route test (2026-10-02)
+
+Two Mesh nodes in the same account, both on a MASQUE device profile, with CIDR routes and split tunnel entries set in the dashboard:
+
+| Node | CIDR routes | Host addresses |
+| --- | --- | --- |
+| A (`~/.mesh-token`) | `192.168.11.0/24`, `fd04:900d:c0de:1::/64` | `192.168.11.1`, `fd04:900d:c0de:1::1` |
+| B (`~/.mesh-token-2`) | `192.168.12.0/24`, `fd04:900d:c0de:2::/64` | `192.168.12.1`, `fd04:900d:c0de:2::1` |
+
+Setup: each node in its own container, with the host addresses on a `dummy0` interface standing in for the LAN, and socat listening on TCP 8080. Each check runs both ways, sourced from the right address, as ICMP ping and a TCP connect, while tcpdump (`-l`) on the receiving tunnel counts arriving packets. The wgcf-mesh containers use kernel WireGuard (`wg-quick`); the official client containers use `warp-cli connector new` and `connect`. The two clients were never registered on a node at the same time. Every registration was deleted afterwards.
+
+| Check | wgcf-mesh (WireGuard) | Official client (MASQUE) |
+| --- | --- | --- |
+| Cloudflare IPv4 to each other | pass | pass |
+| Cloudflare IPv6 to each other | pass | pass |
+| Host IPv4 (IPv4 CIDR routes) | pass | pass |
+| **Host IPv6 (IPv6 CIDR routes)** | **fail: packets leave the sender's `wg0` and never reach the other node** | pass |
+
+### Mixed test: which side needs MASQUE
+
+One node on the official client (MASQUE) and the other on wgcf-mesh (WireGuard), run both ways round. The Host IPv6 test fails in both directions in both mixes. Cross-checks sourced from a Cloudflare IPv6 address instead of a CIDR address separate the causes:
+
+| Check | Result |
+| --- | --- |
+| WireGuard device (Cloudflare IPv6) → MASQUE node's IPv6 route | **pass**, packets arrive |
+| MASQUE device (Cloudflare IPv6) → WireGuard node's IPv6 route | **fail**, packets never arrive |
+| WireGuard node (from its IPv6 route) → anything | **fail**, dropped at Cloudflare |
+| IPv4 CIDR routes, every direction and mix | pass |
+
+**Conclusion: not a WireGuard protocol limitation.** The WireGuard tunnel carries IPv6 fine, including to IPv6 CIDR routes owned by MASQUE nodes. Cloudflare doesn't attach a node's IPv6 CIDR routes to a WireGuard registration: it won't deliver traffic for them to that node, and it drops traffic the node sends from them. IPv4 CIDR routes are attached for WireGuard registrations, so the route machinery exists for WireGuard. The limit is server-side and documented. Whether it's deliberate or an implementation gap (IPv6 CIDR routes arrived in May 2026, possibly built only for the MASQUE data plane) can't be told from outside.
+
+Notes:
+- Interface addresses are handed out per registration (`.1`, `.3`, `.5`, …), not fixed per node, so always read them from the config.
+- **Keepalive:** the wgcf-mesh config has no `PersistentKeepalive`, so a node that only receives traffic doesn't handshake until it sends something, and NAT can drop the mapping. The test set `persistent-keepalive 25`. The generated config now has `PersistentKeepalive = 60` (#9).
+
 ## Plan
 
 Use a **throwaway** Mesh node on a WireGuard device profile, and delete it afterwards.
@@ -178,7 +213,7 @@ Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh
 - ~~What are the token's fields?~~ `a`/`t`/`s` = account tag, tunnel ID, tunnel secret. `a` goes in the URL path and the whole token goes in the body.
 - ~~How is a registration deleted?~~ `DELETE /v1/accounts/{a}/reg/{id}` with `Authorization: Bearer <result.token>` returns `204`.
 - **`connector.additional_interfaces.ipv6`** (the official client's `connector_config.additional_interface_ips`): investigated 2026-10-02, still open whether to add it to `Address`.
-  - It's a node-level address. Two registrations on the same node got interface addresses `2606:4700:cf1:1000::1` and `…::2` but the same extra address, `2606:4700:cf1:2000::1`. That may be how high availability replicas share an address, but this is unverified.
+  - ~~It's a node-level address.~~ Corrected 2026-10-02: it's shared across nodes too. Two different Mesh nodes in the same account both got `2606:4700:cf1:2000::1` from the official client, so it's probably an account-level address, not per node or per device. What it's for is still unknown.
   - The official client (`warp-cli connector new`, then `connect`, under a MASQUE profile) assigns it to `CloudflareWARP` as a **deprecated** address (`preferred_lft 0`). The kernel then never uses it as the source for outgoing connections, but still accepts traffic sent to it. Through MASQUE, traffic sourced from it reaches the internet (`warp=on`).
   - With a wgcf-mesh WireGuard config, adding it to `Address` breaks nothing, but traffic sourced from it gets no reply. That fits Cloudflare's note that IPv6 and high availability features need MASQUE.
   - So don't add it to `Address` as a plain address. wg-quick can't mark it deprecated, so the kernel could pick it as the source and break IPv6. A `PostUp = ip -6 addr add <ip>/128 dev %i preferred_lft 0` line would match the official client on Linux, but other WireGuard apps ignore `PostUp`, and it isn't useful until something can reach the node at that address over WireGuard.
