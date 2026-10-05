@@ -128,6 +128,68 @@ grep -q "3004: invalid warp_connector_token" "$work/stderr" || fail "API error n
 expect_no_file
 expect_not_deleted
 
+# Service token registration of a headless client device.
+client_id=0123456789abcdef0123456789abcdef.access
+fake_jwt="$(printf '{"alg":"RS256"}' | base64 | tr -d '\n=' | tr '/+' '_-').$(printf '{"account_id":"0123456789abcdef0123456789abcdef"}' |
+  base64 | tr -d '\n=' | tr '/+' '_-').c2lnbmF0dXJl"
+run "service token" 0 --organization myteam --client-id "$client_id" --client-secret st-secret
+grep -qx "GET https://myteam.cloudflareaccess.com/warp" "$STUB_LOG" || fail "did not ask Access for a JWT"
+{ grep -qx "CF-Access-Client-Id: $client_id" "$STUB_LOG.stdin" && grep -qx "CF-Access-Client-Secret: st-secret" "$STUB_LOG.stdin"; } ||
+  fail "service token headers not sent: $(cat "$STUB_LOG.stdin")"
+grep -qx "POST https://api.devices.cloudflare.com/v0/reg" "$STUB_LOG" || fail "wrong registration URL"
+grep -qx "Cf-Access-Jwt-Assertion: $fake_jwt" "$STUB_LOG.stdin" || fail "JWT not sent"
+jq -e '.type == "linux" and .name == "wgcf-mesh" and (.key | length) == 44 and (has("warp_connector_token") | not)' "$STUB_LOG.body" > /dev/null ||
+  fail "unexpected registration body: $(cat "$STUB_LOG.body")"
+if [ -f "$work/out/$conf" ]; then
+  sed "s|^PrivateKey = .*|PrivateKey = PRIVATE_KEY|" "$work/out/$conf" | diff -u "$root/tests/fixtures/expected.conf" - || fail "config differs"
+fi
+jq -e '.account == "0123456789abcdef0123456789abcdef"' "$work/out/$profile" > /dev/null || fail "account from the JWT not in the profile"
+expect_not_deleted
+
+printf 'CF-Access-Client-Secret: st-secret\n' > "$work/secret"
+STDIN=$work/secret run "service token, dashboard format, secret on stdin" 0 --organization myteam \
+  --client-id "CF-Access-Client-Id: $client_id" --client-secret -
+{ grep -qx "CF-Access-Client-Id: $client_id" "$STUB_LOG.stdin" && grep -qx "CF-Access-Client-Secret: st-secret" "$STUB_LOG.stdin"; } ||
+  fail "header prefixes not stripped: $(cat "$STUB_LOG.stdin")"
+
+STUB_ACCESS_STATUS=403 STUB_ACCESS_LOCATION='' run "service token rejected" 1 --organization myteam --client-id "$client_id" --client-secret bad
+grep -q "rejected the service token" "$work/stderr" || fail "rejection not explained"
+expect_no_file
+! grep -q '^POST' "$STUB_LOG" || fail "registered without a JWT"
+
+STUB_ACCESS_LOCATION=com.cloudflare.warp://myteam.cloudflareaccess.com/auth \
+  run "service token, no token in the redirect" 1 --organization myteam --client-id "$client_id" --client-secret s
+expect_no_file
+! grep -q '^POST' "$STUB_LOG" || fail "registered anyway"
+STUB_JWT_CLAIMS='{"sub":"x"}' run "service token, no account in the JWT" 1 --organization myteam --client-id "$client_id" --client-secret s
+expect_no_file
+! grep -q '^POST' "$STUB_LOG" || fail "registered anyway"
+STUB_JWT_CLAIMS='{"account_id":"nope"}' run "service token, invalid account in the JWT" 1 --organization myteam \
+  --client-id "$client_id" --client-secret s
+expect_no_file
+! grep -q '^POST' "$STUB_LOG" || fail "registered anyway"
+
+for args in "--organization|bad team" "--client-id|not-an-id" "--client-secret|"; do
+  option=${args%%|*} value=${args#*|}
+  set -- --organization myteam --client-id "$client_id" --client-secret s
+  case $option in
+    --organization) set -- --organization "$value" --client-id "$client_id" --client-secret s ;;
+    --client-id) set -- --organization myteam --client-id "$value" --client-secret s ;;
+    --client-secret) set -- --organization myteam --client-id "$client_id" --client-secret "$value" ;;
+  esac
+  run "service token, invalid $option" 1 "$@"
+  [ ! -s "$STUB_LOG" ] || fail "called the API"
+done
+
+STUB_STATUS=400 STUB_FILTER='{result: null, success: false, errors: [{code: 1000, message: "denied"}]}' \
+  run "service token, registration fails" 1 --organization myteam --client-id "$client_id" --client-secret s
+grep -q "1000: denied" "$work/stderr" || fail "API error not shown"
+expect_no_file
+
+run "service token without a secret" 2 --organization myteam --client-id "$client_id"
+run "service token and a Mesh token" 2 --organization myteam --client-id "$client_id" --client-secret s "$token"
+run "--update with a service token" 2 --update "$work/x.json" --name x --organization myteam --client-id "$client_id" --client-secret s
+
 # write_profile [jq filter]: write a device profile to $work/profile.json, as a registration would.
 write_profile() {
   jq -n --arg token "$api_token" '{version: 1, account: "0123456789abcdef0123456789abcdef",

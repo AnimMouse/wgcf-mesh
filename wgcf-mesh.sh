@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Register a Cloudflare Mesh node and write its WireGuard configuration and a device profile,
-# or update or delete a registration using its device profile. See API.md for the protocol.
+# Register a Cloudflare Mesh node (with a Mesh token) or a headless client device (with a service token),
+# and write its WireGuard configuration and a device profile, or update or delete a registration using
+# its device profile. See API.md for the protocol.
 set -euo pipefail
 
-api=https://api.devices.cloudflare.com/v1
+api_base=https://api.devices.cloudflare.com
+api=$api_base/v1
 
 die() {
   echo "Error: $*" >&2
@@ -42,6 +44,7 @@ trap cleanup EXIT
 usage() {
   echo "Usage: $0 [options] <token>" >&2
   echo "       $0 [options] - < token-file" >&2
+  echo "       $0 [options] --organization <team> --client-id <id> --client-secret <secret>" >&2
   echo "       $0 --update <profile> <metadata options>" >&2
   echo "       $0 --delete <profile>" >&2
   echo "Device metadata, shown in the Cloudflare dashboard (each 1 to 100 bytes):" >&2
@@ -49,6 +52,10 @@ usage() {
   echo "  --model <model>          device model" >&2
   echo "  --os-version <version>   OS version (Cloudflare keeps only the version number if it finds one)" >&2
   echo "  --serial-number <serial> serial number" >&2
+  echo "Service token, to register a headless client device instead of a Mesh node:" >&2
+  echo "  --organization <team>    Zero Trust team name" >&2
+  echo "  --client-id <id>         service token Client ID" >&2
+  echo "  --client-secret <secret> service token Client Secret, or - to read it from standard input" >&2
   echo "Other options:" >&2
   echo "  --update <profile>       change the metadata of the device saved in a wgcf-mesh-<id>.json device profile" >&2
   echo "  --delete <profile>       delete the device saved in a device profile" >&2
@@ -63,6 +70,48 @@ add_metadata() {
   bytes=$(jq -nr --arg v "$3" '$v | utf8bytelength')
   [ "$bytes" -ge 1 ] && [ "$bytes" -le 100 ] || die "$2 must be 1 to 100 bytes long, not $bytes"
   metadata=$(jq -c --arg field "$1" --arg v "$3" '.[$field] = $v' <<< "$metadata")
+}
+
+# strip_header <name> <value>: print the value without a leading "<name>: ", as the dashboard copies it.
+strip_header() {
+  local value=$2
+  shopt -s nocasematch
+  if [[ $value == "$1:"* ]]; then
+    value=${value:${#1}+1}
+    value=${value# }
+  fi
+  shopt -u nocasematch
+  printf %s "$value"
+}
+
+# Exchange the service token for a short-lived Access JWT, and read the account tag from it.
+access_jwt() {
+  local result status location payload
+  [[ $organization_name =~ ^[A-Za-z0-9-]{1,63}$ ]] || die "--organization must be your Zero Trust team name"
+  client_id=$(strip_header CF-Access-Client-Id "$client_id")
+  client_secret=$(strip_header CF-Access-Client-Secret "$client_secret")
+  [[ $client_id =~ ^[0-9a-f]{32}\.access$ ]] || die "--client-id must be a service token Client ID, like <32 hex digits>.access"
+  [[ -n $client_secret && $client_secret != *[[:cntrl:]]* ]] || die "--client-secret is empty or invalid"
+  # Send the credentials on standard input so they don't show up in the process list.
+  result=$(printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' "$client_id" "$client_secret" |
+    curl -sS --max-time 30 -o /dev/null -w '%{http_code} %{redirect_url}' -H @- \
+      "https://$organization_name.cloudflareaccess.com/warp") || die "could not reach $organization_name.cloudflareaccess.com"
+  status=${result%% *}
+  location=${result#* }
+  case $status in
+    302) ;;
+    403) die "Cloudflare Access rejected the service token (HTTP 403). Check the Client ID and Secret, and that a device enrollment rule with the Service Auth action allows this token." ;;
+    *) die "unexpected answer from $organization_name.cloudflareaccess.com (HTTP $status)" ;;
+  esac
+  jwt=${location#*[?&]token=}
+  jwt=${jwt%%&*}
+  [[ $location == *token=* && $jwt =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]] ||
+    die "Cloudflare Access did not return a token"
+  payload=${jwt#*.}
+  payload=${payload%%.*}
+  account=$(jq -Rer 'gsub("-"; "+") | gsub("_"; "/") | . + ("=" * ((4 - length % 4) % 4)) | @base64d | fromjson
+    | .account_id | strings | select(test("^[0-9a-f]{32}$"))' <<< "$payload" 2> /dev/null) ||
+    die "the token from Cloudflare Access has no account ID"
 }
 
 # Print a field from the device profile, failing unless it matches the pattern $2.
@@ -118,7 +167,7 @@ delete_from_profile() {
 mode=register
 delete_after=false
 profile=
-unset name model os_version serial_number
+unset name model os_version serial_number organization_name client_id client_secret
 while [ $# -gt 0 ]; do
   case $1 in
     --delete-after) delete_after=true ;;
@@ -128,9 +177,12 @@ while [ $# -gt 0 ]; do
       profile=$2
       shift
       ;;
-    --name | --model | --os-version | --serial-number)
+    --name | --model | --os-version | --serial-number | --organization | --client-id | --client-secret)
       [ $# -ge 2 ] || usage
       case $1 in
+        --organization) organization_name=$2 ;;
+        --client-id) client_id=$2 ;;
+        --client-secret) client_secret=$2 ;;
         --name) name=$2 ;;
         --model) model=$2 ;;
         --os-version) os_version=$2 ;;
@@ -149,10 +201,13 @@ while [ $# -gt 0 ]; do
 done
 has_metadata=false
 if [ -n "${name+x}${model+x}${os_version+x}${serial_number+x}" ]; then has_metadata=true; fi
+service_token=false
+st_options=${organization_name+x}${client_id+x}${client_secret+x}
+if [ "$st_options" = xxx ]; then service_token=true; elif [ -n "$st_options" ]; then usage; fi
 case $mode in
-  register) [ $# -eq 1 ] || usage ;;
-  update) if [ $# -ne 0 ] || $delete_after || ! $has_metadata; then usage; fi ;;
-  delete) if [ $# -ne 0 ] || $delete_after || $has_metadata; then usage; fi ;;
+  register) if { $service_token && [ $# -ne 0 ]; } || { ! $service_token && [ $# -ne 1 ]; }; then usage; fi ;;
+  update) if [ $# -ne 0 ] || $delete_after || ! $has_metadata || $service_token; then usage; fi ;;
+  delete) if [ $# -ne 0 ] || $delete_after || $has_metadata || $service_token; then usage; fi ;;
 esac
 for cmd in curl jq; do
   command -v "$cmd" > /dev/null || die "$cmd is required"
@@ -176,12 +231,18 @@ case $mode in
     ;;
 esac
 
-token=$1
-if [ "$token" = - ]; then
-  IFS= read -r token || [ -n "$token" ] || die "no token on standard input"
+if $service_token; then
+  if [ "$client_secret" = - ]; then
+    IFS= read -r client_secret || [ -n "$client_secret" ] || die "no Client Secret on standard input"
+  fi
+else
+  token=$1
+  if [ "$token" = - ]; then
+    IFS= read -r token || [ -n "$token" ] || die "no token on standard input"
+  fi
+  account=$(jq -Rer '@base64d | fromjson | .a | strings | select(test("^[0-9a-f]{32}$"))' <<< "$token" 2> /dev/null) ||
+    die "invalid token, copy the whole Cloudflare Mesh token that starts with eyJhIjoi"
 fi
-account=$(jq -Rer '@base64d | fromjson | .a | strings | select(test("^[0-9a-f]{32}$"))' <<< "$token" 2> /dev/null) ||
-  die "invalid token, copy the whole Cloudflare Mesh token that starts with eyJhIjoi"
 
 # Generate a WireGuard key pair. macOS's LibreSSL lacks X25519, so prefer wg, then try Homebrew's OpenSSL.
 if command -v wg > /dev/null; then
@@ -200,12 +261,23 @@ fi
 key_pattern='^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=$'
 [[ $private_key =~ $key_pattern && $public_key =~ $key_pattern ]] || die "could not generate a WireGuard key pair"
 
-# Mesh nodes must be "linux": the API rejects every other type with error 2082.
-body=$(jq -nc --arg key "$public_key" --arg token "$token" --argjson metadata "$metadata" \
-  '{type: "linux", key: $key, tos: (now | todate), warp_connector_token: $token} + $metadata')
-# Send the token on standard input so it doesn't show up in the process list.
-response=$(curl -sS --max-time 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary @- \
-  "$api/accounts/$account/warp_connector" <<< "$body") || die "could not reach the Cloudflare API"
+if $service_token; then
+  # The Access JWT lasts only 60 seconds, so get it right before registering.
+  access_jwt
+  body=$(jq -nc --arg key "$public_key" --argjson metadata "$metadata" \
+    '{type: "linux", key: $key, tos: (now | todate)} + $metadata')
+  response=$(printf 'Cf-Access-Jwt-Assertion: %s\nContent-Type: application/json\n' "$jwt" |
+    curl -sS --max-time 30 -w '\n%{http_code}' -X POST -H @- --data-binary "$body" "$api_base/v0/reg") ||
+    die "could not reach the Cloudflare API"
+  unset jwt client_secret
+else
+  # Mesh nodes must be "linux": the API rejects every other type with error 2082.
+  body=$(jq -nc --arg key "$public_key" --arg token "$token" --argjson metadata "$metadata" \
+    '{type: "linux", key: $key, tos: (now | todate), warp_connector_token: $token} + $metadata')
+  # Send the token on standard input so it doesn't show up in the process list.
+  response=$(curl -sS --max-time 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary @- \
+    "$api/accounts/$account/warp_connector" <<< "$body") || die "could not reach the Cloudflare API"
+fi
 status=${response##*$'\n'}
 response=${response%$'\n'*}
 if [ "$status" != 200 ] || ! jq -e '.success == true' <<< "$response" > /dev/null 2>&1; then

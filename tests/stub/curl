@@ -2,6 +2,8 @@
 # Stand-in for curl. Logs each call to $STUB_LOG, the headers sent on standard input to $STUB_LOG.stdin,
 # and request bodies to $STUB_LOG.body. Answers a registration with tests/fixtures/register.json, with the
 # sent key and metadata copied in like the real API, then transformed by the jq filter $STUB_FILTER.
+# Answers Cloudflare Access with a 302 to a fake JWT for the test account ($STUB_ACCESS_STATUS and
+# $STUB_ACCESS_LOCATION override it).
 set -euo pipefail
 method=GET
 url=
@@ -24,8 +26,23 @@ while [ $# -gt 0 ]; do
 done
 input=$(cat)
 echo "$method $url" >> "$STUB_LOG"
+if [[ $url == https://*.cloudflareaccess.com/warp ]]; then
+  echo "$input" >> "$STUB_LOG.stdin"
+  host=${url#https://}
+  host=${host%%/*}
+  claims=${STUB_JWT_CLAIMS:-'{"account_id":"0123456789abcdef0123456789abcdef"}'}
+  b64url() { base64 | tr -d '\n=' | tr '/+' '_-'; }
+  jwt="$(printf '{"alg":"RS256"}' | b64url).$(printf %s "$claims" | b64url).c2lnbmF0dXJl"
+  printf '%s %s' "${STUB_ACCESS_STATUS:-302}" "${STUB_ACCESS_LOCATION-com.cloudflare.warp://$host/auth?token=$jwt}"
+  exit 0
+fi
 case $method in
   POST)
+    # Mesh registrations send the body on standard input; service token registrations send headers there.
+    if [[ $url == */v0/reg ]]; then
+      echo "$input" >> "$STUB_LOG.stdin"
+      input=$data
+    fi
     echo "$input" >> "$STUB_LOG.body"
     jq --argjson body "$input" '(.result.key = $body.key)
       | .result += ($body | {name, model, os_version, serial_number} | with_entries(select(.value != null)))

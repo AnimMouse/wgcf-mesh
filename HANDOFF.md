@@ -193,6 +193,17 @@ Notes:
 - Interface addresses are handed out per registration (`.1`, `.3`, `.5`, …), not fixed per node, so always read them from the config.
 - **Keepalive:** the wgcf-mesh config has no `PersistentKeepalive`, so a node that only receives traffic doesn't handshake until it sends something, and NAT can drop the mapping. The test set `persistent-keepalive 25`. The generated config now has `PersistentKeepalive = 60` (#9).
 
+## Service token registration (2026-10-06)
+
+Captured from the official client (`warp-svc` with `organization`, `auth_client_id` and `auth_client_secret` in `mdm.xml`), then replayed with curl. Details are in `API.md`.
+- The log shows two steps: `service_token_registration` ("Requesting JWT from Access uri=<team>.cloudflareaccess.com", then "Successfully extracted JWT from Access callback"), then `new_registration`.
+- `GET https://<team>.cloudflareaccess.com/warp` with the `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers answers `302` to `com.cloudflare.warp://<team>.cloudflareaccess.com/auth?token=<JWT>`. The JWT lasts 60 seconds and carries `account_id`. A wrong secret gets `403`.
+- `POST /v0/reg` with `Cf-Access-Jwt-Assertion: <JWT>` and our Curve25519 key returns a WireGuard config with a Mesh IP, even under a MASQUE device profile. The tunnel works over IPv4 and IPv6. Get, update and delete under `/v1/accounts/{a}/reg/{id}` work as for Mesh nodes.
+- `type: "windows"` is accepted for client devices, unlike Mesh nodes.
+- **A JWT several minutes past its 60-second expiry was still accepted by `/v0/reg`.** That's Cloudflare's side; the script doesn't rely on it.
+- The official client registered with MASQUE keys (P-256) because the matching profile uses MASQUE. Its `reg.json` stores the service token in `auth_method.{type,id,key}`.
+- Every device made during the investigation was deleted.
+
 ## Plan
 
 Use a **throwaway** Mesh node on a WireGuard device profile, and delete it afterwards.
@@ -205,7 +216,7 @@ Use a **throwaway** Mesh node on a WireGuard device profile, and delete it after
 6. **Check CORS** on each endpoint, which decides whether a browser version is possible.
 7. **Find the delete call** (probably authenticated with `reg.json`'s `api_token`) for CI cleanup.
 
-Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh.sh` and the offline tests (`tests/test.sh`, with `curl` stubbed) are written. A real run produced a working tunnel over IPv4 and IPv6, and the registration was deleted afterwards. README and CI are written. All changes go through PRs, and the `main` ruleset requires the `CI` check. The device profile (`wgcf-mesh-<id>.json`, `--update` and `--delete`) and device metadata (`--name`, `--model`, `--os-version`, `--serial-number`) are implemented, and the daily smoke test registers and then deletes through it. Next: check Cloudflare's terms, then cut v1.0.0 with `gh release create`. After that, the `CLAUDE.md` roadmap.
+Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh.sh` and the offline tests (`tests/test.sh`, with `curl` stubbed) are written. A real run produced a working tunnel over IPv4 and IPv6, and the registration was deleted afterwards. README and CI are written. All changes go through PRs, and the `main` ruleset requires the `CI` check. The device profile (`wgcf-mesh-<id>.json`, `--update` and `--delete`) and device metadata (`--name`, `--model`, `--os-version`, `--serial-number`) are implemented, and so is service token registration of client devices (`--organization`, `--client-id`, `--client-secret`), and the daily smoke test registers and then deletes through it. Next: check Cloudflare's terms, then cut v1.0.0 with `gh release create`. After that, the `CLAUDE.md` roadmap.
 
 ## Open questions
 

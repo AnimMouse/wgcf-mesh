@@ -48,6 +48,17 @@ bash wgcf-mesh.sh --update wgcf-mesh-<registration_id>.json --name branch-router
 ```
 Each value can be up to 100 bytes. Cloudflare keeps only the version number from the OS version if it finds one, so `RouterOS 7.20.1` is shown as `7.20.1`. The `# Device name:` comment in an existing configuration file isn't updated.
 
+### Register a client device with a service token
+Instead of a Mesh node, you can register a headless client device with a [service token](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/), the same way the official client does with `auth_client_id` and `auth_client_secret` in `mdm.xml`. One service token can register any number of devices, and you don't create anything in the dashboard per device.
+1. Create a service token, and a device enrollment rule with the **Service Auth** action for it.
+2. Pass your team name, the token's Client ID, and its Client Secret on standard input:
+   ```
+   bash wgcf-mesh.sh --organization <team-name> --client-id <client-id>.access --client-secret - < secret.txt
+   ```
+   Both values can also be pasted as the dashboard copies them, like `CF-Access-Client-Id: <client-id>.access`.
+
+A client device gets its own Mesh IP and can reach Mesh nodes and the subnets behind them, but it **can't advertise CIDR routes**. For a router that serves a LAN, register a Mesh node with a Mesh token instead. The `--name`, `--update` and `--delete` options work the same for both.
+
 ### Delete a device
 Each run registers a new device on the Mesh node. To delete one you no longer use, pass its device profile:
 ```
@@ -62,6 +73,9 @@ This deletes the device from Cloudflare, and its configuration stops working. Th
 | `--model <model>` | Device model. |
 | `--os-version <version>` | OS version. |
 | `--serial-number <serial>` | Serial number. |
+| `--organization <team>` | Zero Trust team name, to register a client device with a service token. |
+| `--client-id <id>` | Service token Client ID. |
+| `--client-secret <secret>` | Service token Client Secret, or `-` to read it from standard input. |
 | `--update <profile>` | Change the name, model, OS version or serial number of the device saved in a device profile. |
 | `--delete <profile>` | Delete the device saved in a `wgcf-mesh-<registration_id>.json` device profile. The files are kept. |
 | `--delete-after` | Delete the registration right after writing the configuration, so the configuration no longer works, and write no device profile. For testing. |

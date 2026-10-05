@@ -74,6 +74,30 @@ Other fields in the response (not used yet):
 - `result.policy`, the device profile. Its `tunnel_protocol` is empty under a WireGuard profile and `"masque"` under a MASQUE one. Either way the registration returns a working WireGuard config (verified 2026-10-01), so `wgcf-mesh.sh` ignores it.
 - `result.peer`, `result.user`, `result.override_codes` (secrets), `result.dex_tests`, and timestamps.
 
+## Register a client device with a service token
+
+A service token registers a headless client device, which gets a Mesh IP but can't advertise CIDR routes. This is what the official client does with `organization`, `auth_client_id` and `auth_client_secret` in `mdm.xml`. Verified 2026-10-06. The service token needs a device enrollment rule with the Service Auth action.
+
+**1. Get an Access JWT:**
+```
+GET https://<team>.cloudflareaccess.com/warp
+CF-Access-Client-Id: <id>.access
+CF-Access-Client-Secret: <secret>
+```
+The answer is `302` with `Location: com.cloudflare.warp://<team>.cloudflareaccess.com/auth?token=<JWT>`, the same URL the browser login flow puts in its success page. A rejected token gets `403` and an Access error page.
+
+The JWT (RS256) is valid for **60 seconds**. Its claims include `account_id` (the account tag for the `/v1/accounts/{a}/…` calls below), `service_token_uuid`, the shared identity `email` (`non_identity@<team>.cloudflareaccess.com`) and `warp: true`. On 2026-10-06 the registration below also accepted a JWT several minutes past its expiry. Don't rely on that: `wgcf-mesh.sh` registers immediately after getting the JWT.
+
+**2. Register:**
+```
+POST /v0/reg
+Cf-Access-Jwt-Assertion: <JWT>
+Content-Type: application/json
+```
+The body is the same as for a Mesh node, minus `warp_connector_token`: `type`, `key`, `tos`, and the optional metadata. Again, leave out `tunnel_key_data` and the server accepts our Curve25519 key. Unlike Mesh nodes, `type` isn't limited to `linux` (`windows` was accepted). The response has the same shape: `account.account_type` is `team`, there's no `connector` object, and `policy.tunnel_protocol` is the matching device profile's. A WireGuard config is returned under a MASQUE profile too.
+
+Get, update and delete work the same as for Mesh nodes, with `{a}` taken from the JWT's `account_id`.
+
 ## Get a registration
 
 ```
