@@ -1,7 +1,7 @@
 name: Smoke test
 on:
   schedule:
-    - cron: '7 11 * * *'
+    - cron: '7 11 * * 0'
   workflow_dispatch:
 
 permissions: {}
@@ -11,6 +11,11 @@ concurrency:
 
 jobs:
   smoke-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [mesh-node, service-token]
+    name: Smoke test (${{ matrix.kind }})
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -21,13 +26,22 @@ jobs:
         with:
           persist-credentials: false
 
-      # Registers a real Mesh node with a dedicated test token, then deletes it with the device profile it saved.
-      - name: Register and delete
+      # Registers a real device with dedicated test credentials, updates it, then deletes it with the device profile it saved.
+      - name: Register, update and delete
         working-directory: ${{ runner.temp }}
         run: |
-          [ -n "$MESH_TOKEN" ] || { echo "::error::The MESH_TOKEN repository secret is not set"; exit 1; }
           script=$GITHUB_WORKSPACE/wgcf-mesh.sh
-          bash "$script" - <<< "$MESH_TOKEN"
+          case $KIND in
+            mesh-node)
+              [ -n "$MESH_TOKEN" ] || { echo "::error::The MESH_TOKEN repository secret is not set"; exit 1; }
+              bash "$script" --name smoke-test - <<< "$MESH_TOKEN"
+              ;;
+            service-token)
+              [ -n "$ST_ORGANIZATION" ] && [ -n "$ST_CLIENT_ID" ] && [ -n "$ST_CLIENT_SECRET" ] ||
+                { echo "::error::The ST_ORGANIZATION, ST_CLIENT_ID and ST_CLIENT_SECRET repository secrets must be set"; exit 1; }
+              bash "$script" --name smoke-test --organization "$ST_ORGANIZATION" --client-id "$ST_CLIENT_ID" --client-secret - <<< "$ST_CLIENT_SECRET"
+              ;;
+          esac
           conf=(wgcf-mesh-*.conf)
           profile=(wgcf-mesh-*.json)
           [ ${#profile[@]} -eq 1 ] && [ -f "${profile[0]}" ] || { echo "::error::Expected one device profile"; exit 1; }
@@ -35,13 +49,18 @@ jobs:
           trap '[ ! -f "${profile[0]}" ] || bash "$script" --delete "${profile[0]}"' EXIT
           [ ${#conf[@]} -eq 1 ] && [ -f "${conf[0]}" ] || { echo "::error::Expected one configuration file"; exit 1; }
           # Check the layout without printing addresses to the public log.
-          for line in '^PrivateKey = ' '^Address = .+/128, .+/32$' '^PublicKey = ' '^Endpoint = '; do
+          for line in '^# Device name: smoke-test$' '^PrivateKey = ' '^Address = .+/128, .+/32$' '^PublicKey = ' '^Endpoint = '; do
             grep -Eq "$line" "${conf[0]}" || { echo "::error::No line matching $line"; exit 1; }
           done
+          bash "$script" --update "${profile[0]}" --model "GitHub Actions"
           bash "$script" --delete "${profile[0]}"
           [ -e "${profile[0]}" ] || { echo "::error::The device profile was removed"; exit 1; }
           # --delete keeps the profile, so remove it here or the trap above would delete again.
-          rm -f "${profile[0]}"
-          rm -f "${conf[0]}"
+          rm -f "${profile[0]}" "${conf[0]}"
         env:
-          MESH_TOKEN: ${{ secrets.MESH_TOKEN }}
+          KIND: ${{ matrix.kind }}
+          # Each job gets only the secrets it uses.
+          MESH_TOKEN: ${{ matrix.kind == 'mesh-node' && secrets.MESH_TOKEN || '' }}
+          ST_ORGANIZATION: ${{ matrix.kind == 'service-token' && secrets.ST_ORGANIZATION || '' }}
+          ST_CLIENT_ID: ${{ matrix.kind == 'service-token' && secrets.ST_CLIENT_ID || '' }}
+          ST_CLIENT_SECRET: ${{ matrix.kind == 'service-token' && secrets.ST_CLIENT_SECRET || '' }}
