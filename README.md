@@ -81,6 +81,6 @@ This deletes the device from Cloudflare, and its configuration stops working. Th
 | `--delete-after` | Delete the registration right after writing the configuration, so the configuration no longer works, and write no device profile. For testing. |
 
 ## How it works
-See [API.md](API.md) for the protocol. The API is undocumented, and Cloudflare can change it without notice. A scheduled CI test checks it still works.
+See [API.md](API.md) for the protocol. The API is undocumented, and Cloudflare can change it without notice. A weekly CI test checks it still works.
 
 This project is not affiliated with or endorsed by Cloudflare.
