@@ -124,6 +124,8 @@ Probably auth `Authorization: Bearer <api_token>` like consumer WARP:
 
 `OPTIONS` returns 404 with no `Access-Control-*` headers, and neither does `POST` with an `Origin` header. A browser page can't call the API directly, so per the decisions **don't build a browser version**.
 
+Re-checked 2026-10-17, including the endpoints added since (`/v0/reg`, `/reg/{id}`, Access `/warp`): still no CORS anywhere. A "simple" `text/plain` `POST` is processed, but its response can't be read by the page. [lanrat/wireguard-warp-generator](https://github.com/lanrat/wireguard-warp-generator) does consumer WARP in the browser through the public CORS proxy `proxy.corsfix.com` (earlier `corsproxy.io`). That's acceptable for a free consumer account, but not for Mesh or service tokens, which let anyone enroll devices into the user's organization. **Public CORS proxies are ruled out.** The only acceptable browser route is a Worker in the user's own account (roadmap nice-to-have 4) or a browser extension.
+
 ## Real-token results (2026-10-01): registration is one call
 
 With a real throwaway token and plain curl (no `CF-Client-Version`, no user agent), one call produced a working WireGuard config. The handshake completed, and `cdn-cgi/trace` over both IPv4 and IPv6 showed `warp=on` and `gateway=on`. The registration was then deleted.

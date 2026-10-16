@@ -15,7 +15,8 @@ There is no second step. The WARP client registers a P-256 MASQUE key first and 
 
 - Host: `https://api.devices.cloudflare.com`. `zero-trust-client.cloudflareclient.com` (same IPs) and `api.cloudflareclient.com` also answer these paths.
 - No client version header, user agent or other special header is required. Send `Content-Type: application/json` with JSON bodies.
-- No CORS: `OPTIONS` returns 404 and no response has `Access-Control-*` headers, so a browser page can't call the API.
+- **No CORS.** Every preflight (`OPTIONS`) returns `404`, and no response has `Access-Control-*` headers. That covers `/v1/accounts/{a}/warp_connector`, `/v0/reg`, `/v1/accounts/{a}/reg/{id}` and Access's `<team>.cloudflareaccess.com/warp` (re-checked 2026-10-17). The API does process a "simple" cross-origin `POST` with `Content-Type: text/plain`, which browsers send without a preflight. But the page can't read the response, so it would register a device without getting its addresses, ID or API token. A static browser page therefore can't work.
+- **A public CORS proxy is ruled out.** Tools for consumer WARP, such as [lanrat/wireguard-warp-generator](https://github.com/lanrat/wireguard-warp-generator), route requests through a public CORS proxy (Corsfix). There, only a public key and a free account's API token pass through it. Here, the proxy would see a Mesh token or a service token secret, which lets anyone enroll new devices into the user's Zero Trust organization, plus every device's API token. A browser version would have to run in a Cloudflare Worker that each user deploys to their own account, or in a browser extension.
 
 ## The token
 
