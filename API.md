@@ -40,7 +40,6 @@ Content-Type: application/json
   "type": "linux",
   "name": "wgcf-mesh",
   "key": "<base64 Curve25519 public key>",
-  "tos": "2026-10-01T00:00:00Z",
   "warp_connector_token": "<token, unchanged>"
 }
 ```
@@ -48,6 +47,7 @@ Content-Type: application/json
 - `key` is required (`3006 missing key field`).
 - `type` must be `"linux"`. Every other value, including `windows`, `mac`, `android`, `ios` and `chromeos`, is rejected with `2082 invalid device operating system for warp connector device registration`.
 - Optional metadata shown in the dashboard: `name`, `model`, `os_version` and `serial_number`. Each is at most 100 **bytes** (`2004 bad device request: failed to parse field 'name': value exceeds max length 100`). An empty `name` is stored as no name. The server keeps only the version number from `os_version` if it finds one (`"RouterOS 7.20.1 (stable)"` becomes `"7.20.1"`), and otherwise keeps the text.
+- `tos`, an RFC 3339 timestamp, is optional. The official client sends it after `--accept-tos` to record acceptance of its own [Application Terms](https://www.cloudflare.com/application/terms/). Without it, the server stores `tos: null`, and registration, internet access and Mesh connectivity all work the same (verified 2026-10-17 for Mesh nodes and service-token client devices). `wgcf-mesh.sh` doesn't send it, so it never records an acceptance on anyone's behalf.
 - **Don't send `tunnel_key_data`.** `{"key_type": "curve25519", "tunnel_type": "wireguard"}` is rejected with `2004 bad device request`.
 - The WARP client also sends `model`, `os_version`, `gateway_device_id`, `serial_number`, `identifiers` and `mtls_csr`. None are required.
 
@@ -94,7 +94,7 @@ POST /v0/reg
 Cf-Access-Jwt-Assertion: <JWT>
 Content-Type: application/json
 ```
-The body is the same as for a Mesh node, minus `warp_connector_token`: `type`, `key`, `tos`, and the optional metadata. Again, leave out `tunnel_key_data` and the server accepts our Curve25519 key. Unlike Mesh nodes, `type` isn't limited to `linux` (`windows` was accepted). The response has the same shape: `account.account_type` is `team`, there's no `connector` object, and `policy.tunnel_protocol` is the matching device profile's. A WireGuard config is returned under a MASQUE profile too.
+The body is the same as for a Mesh node, minus `warp_connector_token`: `type`, `key`, and the optional metadata (and optionally `tos`). Again, leave out `tunnel_key_data` and the server accepts our Curve25519 key. Unlike Mesh nodes, `type` isn't limited to `linux` (`windows` was accepted). The response has the same shape: `account.account_type` is `team`, there's no `connector` object, and `policy.tunnel_protocol` is the matching device profile's. A WireGuard config is returned under a MASQUE profile too.
 
 Get, update and delete work the same as for Mesh nodes, with `{a}` taken from the JWT's `account_id`.
 

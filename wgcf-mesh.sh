@@ -265,15 +265,16 @@ if $service_token; then
   # The Access JWT lasts only 60 seconds, so get it right before registering.
   access_jwt
   body=$(jq -nc --arg key "$public_key" --argjson metadata "$metadata" \
-    '{type: "linux", key: $key, tos: (now | todate)} + $metadata')
+    '{type: "linux", key: $key} + $metadata')
   response=$(printf 'Cf-Access-Jwt-Assertion: %s\nContent-Type: application/json\n' "$jwt" |
     curl -sS --max-time 30 -w '\n%{http_code}' -X POST -H @- --data-binary "$body" "$api_base/v0/reg") ||
     die "could not reach the Cloudflare API"
   unset jwt client_secret
 else
-  # Mesh nodes must be "linux": the API rejects every other type with error 2082.
+  # Mesh nodes must be "linux": the API rejects every other type with error 2082. No "tos" is sent:
+  # it records acceptance of the official client's terms, and registration works without it.
   body=$(jq -nc --arg key "$public_key" --arg token "$token" --argjson metadata "$metadata" \
-    '{type: "linux", key: $key, tos: (now | todate), warp_connector_token: $token} + $metadata')
+    '{type: "linux", key: $key, warp_connector_token: $token} + $metadata')
   # Send the token on standard input so it doesn't show up in the process list.
   response=$(curl -sS --max-time 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary @- \
     "$api/accounts/$account/warp_connector" <<< "$body") || die "could not reach the Cloudflare API"

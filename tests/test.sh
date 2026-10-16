@@ -74,7 +74,7 @@ fi
 files=$(cd "$work/out" && printf '%s ' .[!.]* *)
 [ "$files" = ".[!.]* $conf $profile " ] || fail "unexpected files: $files"
 grep -q "^POST .*/v1/accounts/0123456789abcdef0123456789abcdef/warp_connector$" "$STUB_LOG" || fail "wrong registration URL"
-jq -e '.type == "linux" and .name == "wgcf-mesh" and (has("model") or has("os_version") or has("serial_number") | not)' \
+jq -e '.type == "linux" and .name == "wgcf-mesh" and (has("model") or has("os_version") or has("serial_number") or has("tos") | not)' \
   "$STUB_LOG.body" > /dev/null || fail "unexpected registration body: $(cat "$STUB_LOG.body")"
 expect_not_deleted
 
@@ -138,7 +138,7 @@ grep -qx "GET https://myteam.cloudflareaccess.com/warp" "$STUB_LOG" || fail "did
   fail "service token headers not sent: $(cat "$STUB_LOG.stdin")"
 grep -qx "POST https://api.devices.cloudflare.com/v0/reg" "$STUB_LOG" || fail "wrong registration URL"
 grep -qx "Cf-Access-Jwt-Assertion: $fake_jwt" "$STUB_LOG.stdin" || fail "JWT not sent"
-jq -e '.type == "linux" and .name == "wgcf-mesh" and (.key | length) == 44 and (has("warp_connector_token") | not)' "$STUB_LOG.body" > /dev/null ||
+jq -e '.type == "linux" and .name == "wgcf-mesh" and (.key | length) == 44 and (has("warp_connector_token") or has("tos") | not)' "$STUB_LOG.body" > /dev/null ||
   fail "unexpected registration body: $(cat "$STUB_LOG.body")"
 if [ -f "$work/out/$conf" ]; then
   sed "s|^PrivateKey = .*|PrivateKey = PRIVATE_KEY|" "$work/out/$conf" | diff -u "$root/tests/fixtures/expected.conf" - || fail "config differs"
