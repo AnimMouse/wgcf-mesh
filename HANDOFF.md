@@ -2,6 +2,31 @@
 
 Working notes for starting the new `wgcf-mesh` repo. Written 2026-10-01, after wgcf-connector v1.0.3. Everything from `HANDOFF.md` is done except this project.
 
+## Where things stand (v1.0.0)
+
+**[v1.0.0](https://github.com/AnimMouse/wgcf-mesh/releases/tag/v1.0.0) was released on 2026-10-16 (UTC)**, from `99a29a9`, after CI and a manual smoke test passed on `main`. The sections below are the working notes that led there, kept for reference.
+
+What v1.0.0 does:
+- Registers a **Mesh node** from a Mesh token, or a **headless client device** from a service token, and writes `wgcf-mesh-<id>.conf` plus a `wgcf-mesh-<id>.json` device profile.
+- Changes the device metadata with `--update`, and deletes the device with `--delete`.
+- The protocol is in `API.md`. Conventions, the workflow and the roadmap are in `CLAUDE.md`.
+
+How the repo is run:
+- Every change goes through a PR. The `main` ruleset requires the `CI` check, which runs lint and the offline tests on Ubuntu and macOS.
+- The smoke test runs weekly (and on demand) against the real API, for both kinds of device.
+- Releases are made with `gh release create`. Use the next semver version (`v1.0.1`, `v1.1.0`, …) from the latest GitHub Release.
+
+Known limitations:
+- **IPv6 CIDR routes can't be served by a WireGuard registration** (server-side; see the IPv6 test below).
+- Service-token devices can't advertise routes.
+- No browser version: there's no CORS, and public CORS proxies are ruled out.
+
+Next steps, all optional (details in the `CLAUDE.md` roadmap):
+1. **To verify:** whether hostname routes and high availability work for wgcf-mesh nodes on a MASQUE profile.
+2. **Dashboard check:** which metadata fields the dashboard shows, and whether `--update` changes `os_version` and `serial_number` (the API's GET doesn't return them).
+3. **Nice to have:** the device posture heartbeat, consumer WARP profiles, team login JWTs (reusing the `/v0/reg` path), and a browser version as a Worker in the user's own account.
+4. **Watch:** whether the API ever starts requiring a client version header or rejecting old ones. The weekly smoke test would catch that.
+
 ## Goal
 
 Generate the Cloudflare Mesh WireGuard config by calling Cloudflare's registration API directly, without Docker or the WARP client, the way [ViRb3/wgcf](https://github.com/ViRb3/wgcf) and [poscat0x04/wgcf-teams](https://github.com/poscat0x04/wgcf-teams) do. wgcf-connector stays as the Docker-based fallback, and as the reference for what a correct config looks like.
@@ -231,7 +256,7 @@ Use a **throwaway** Mesh node on a WireGuard device profile, and delete it after
 6. **Check CORS** on each endpoint, which decides whether a browser version is possible.
 7. **Find the delete call** (probably authenticated with `reg.json`'s `api_token`) for CI cleanup.
 
-Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh.sh` and the offline tests (`tests/test.sh`, with `curl` stubbed) are written. A real run produced a working tunnel over IPv4 and IPv6, and the registration was deleted afterwards. README and CI are written. All changes go through PRs, and the `main` ruleset requires the `CI` check. The device profile (`wgcf-mesh-<id>.json`, `--update` and `--delete`) and device metadata (`--name`, `--model`, `--os-version`, `--serial-number`) are implemented, and so is service token registration of client devices (`--organization`, `--client-id`, `--client-secret`), and the weekly smoke test registers, updates and deletes both a Mesh node and a service-token device. Next: check Cloudflare's terms, then cut v1.0.0 with `gh release create`. After that, the `CLAUDE.md` roadmap.
+Status: done. All steps except 4, which turned out to be unnecessary, are complete, and v1.0.0 is released. See "Where things stand" at the top.
 
 ## Open questions
 
