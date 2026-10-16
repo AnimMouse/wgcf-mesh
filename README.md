@@ -83,4 +83,7 @@ This deletes the device from Cloudflare, and its configuration stops working. Th
 ## How it works
 See [API.md](API.md) for the protocol. The API is undocumented, and Cloudflare can change it without notice. A weekly CI test checks it still works.
 
-This project is not affiliated with or endorsed by Cloudflare.
+## Disclaimer
+This project is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Cloudflare, Inc. or its subsidiaries or affiliates. "Cloudflare" and related names are trademarks of Cloudflare, Inc. The official Cloudflare website is https://www.cloudflare.com/.
+
+wgcf-mesh uses an undocumented API that Cloudflare can change or block at any time. You use it at your own risk, and your use of Cloudflare's services remains subject to your account's agreements with Cloudflare, such as the [Self-Serve Subscription Agreement](https://www.cloudflare.com/terms/). wgcf-mesh doesn't accept any terms on your behalf.

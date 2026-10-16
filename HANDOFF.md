@@ -204,6 +204,19 @@ Captured from the official client (`warp-svc` with `organization`, `auth_client_
 - The official client registered with MASQUE keys (P-256) because the matching profile uses MASQUE. Its `reg.json` stores the service token in `auth_method.{type,id,key}`.
 - Every device made during the investigation was deleted.
 
+## Cloudflare terms review (2026-10-17)
+
+Not legal advice. Relevant wording:
+- [Application Terms](https://www.cloudflare.com/application/terms/) §2, for the WARP / Cloudflare One client: "not to modify, decompile, reverse engineer, or create derivative works of the Application." §4 extends them to Zero Trust use.
+- [Self-Serve Subscription Agreement](https://www.cloudflare.com/terms/) §2.2.1: "(g) reverse engineer the Services". Also (e) automated scripts producing multiple accounts or mining data, (b) interference, (c) circumventing restrictions, and (j) providing a VPN or proxy service.
+- [Trademark guidelines](https://www.cloudflare.com/trademark/): don't imply affiliation or endorsement, and don't put Cloudflare marks in product names.
+
+Decisions:
+- **Publish anyway**, because these tools are tolerated in practice: [ViRb3/wgcf](https://github.com/ViRb3/wgcf) has done the same for consumer WARP since 2020 and is actively maintained, and wgcf-teams has been public since 2022.
+- **Don't send `tos`.** It's optional, and it would record acceptance of the client's terms on the user's behalf. There's no `--accept-tos` prompt either: unlike wgcf, every user already has a Cloudflare account under its own agreement.
+- **The README carries a wgcf-style non-affiliation and at-your-own-risk disclaimer.**
+- **`HANDOFF.md` stays public**, including the reverse-engineering method, for transparency.
+
 ## Plan
 
 Use a **throwaway** Mesh node on a WireGuard device profile, and delete it afterwards.
@@ -231,7 +244,7 @@ Status: all steps done except 4, which is no longer needed. `API.md`, `wgcf-mesh
 - ~~Filename?~~ Decided 2026-10-01: `wgcf-mesh-<id>.conf`, where `<id>` is `result.id` as returned (`t.<uuid>`).
 - ~~Does a MASQUE-only device profile still get a working WireGuard config?~~ Yes, verified 2026-10-01. Under a MASQUE profile the registration still returns the WireGuard peer key, and the tunnel works over IPv4 and IPv6 (`warp=on`, `gateway=on`). `policy.tunnel_protocol` is `"masque"` there and empty under a WireGuard profile, so the script ignores it and **no WireGuard device profile is needed**. Untested: Cloudflare's docs say hostname routes, IPv6 CIDR routes and high availability don't work with a WireGuard profile. Whether they work for our WireGuard tunnel under a MASQUE profile is tracked in the `CLAUDE.md` roadmap.
 - ~~Which endpoint and port to use?~~ Decided 2026-10-02: like wgcf-connector, the first IPv4 address with the first port (2408) is the active `Endpoint`, and every other address and port pair is a `#Endpoint =` comment.
-- Is `tos` required? Is `name` shown in the dashboard?
+- ~~Is `tos` required?~~ No (2026-10-17): without it the server stores `tos: null`, and both kinds of device register, reach the internet and reach each other. The script no longer sends it. Is `name` shown in the dashboard?
 - What `CF-Client-Version` or user agent does the API require, and does it reject old values over time? Not required as of 2026-10-01, even for a real registration. If so, CI needs to track WARP releases like wgcf-connector's `auto-update.yaml` does.
 
 ## Carry over from wgcf-connector
