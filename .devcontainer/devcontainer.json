@@ -1,6 +1,8 @@
 {
   "name": "wgcf-mesh",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "remoteUser": "vscode",
+  "init": true,
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {
       "moby": false
@@ -10,7 +12,11 @@
     "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
   "mounts": [
-    "source=claude-${devcontainerId},target=/home/vscode/.claude,type=volume"
+    "source=claude-${devcontainerId},target=/home/vscode/.claude,type=volume",
+    "source=persist-${devcontainerId},target=/workspaces/.persist,type=volume"
   ],
-  "postCreateCommand": "sudo chown -R $(id -u):$(id -g) ~/.claude && sudo chown -R $(id -u):$(id -g) \"$(npm prefix -g)/lib/node_modules/@anthropic-ai\""
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+  },
+  "postCreateCommand": "sudo chown -R $(id -u):$(id -g) ~/.claude /workspaces/.persist && sudo chown -R $(id -u):$(id -g) \"$(npm prefix -g)/lib/node_modules/@anthropic-ai\""
 }
